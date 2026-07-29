@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Arbitragex",
+  "version": "1.6.0",
+  "description": "Arbitrage-Kalkulation, Einkauf erfassen, Listing anlegen & Sendung an Prep ankuendigen – direkt auf jeder Amazon-Produktseite. EAN-Erkennung zusaetzlich auf allen anderen Shop-Seiten.",
+  "permissions": [
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://arbitrage.anwaltx.de/*",
+    "https://www.amazon.de/*",
+    "https://www.amazon.fr/*",
+    "https://www.amazon.it/*",
+    "https://www.amazon.es/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "panel.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Arbitragex"
+  },
+  "icons": {
+    "128": "icon128.png"
+  }
+}

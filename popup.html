@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { width: 280px; margin: 0; font: 13px/1.4 -apple-system, system-ui, sans-serif; background: #f7f8fc; color: #1e2230; }
+    .h { background: #14162a; color: #fff; padding: 14px 16px; }
+    .h b { font-size: 15px; }
+    .h span { display: block; font-size: 11px; opacity: .6; }
+    .c { padding: 14px 16px; }
+    .st { font-weight: 600; margin-bottom: 8px; }
+    .ok { color: #15803d; } .bad { color: #b91c1c; }
+    label { display: block; font-size: 11px; color: #8a90a6; margin: 10px 0 4px; }
+    input { width: 100%; padding: 7px 8px; border: 1px solid #d7d9e6; border-radius: 8px; box-sizing: border-box; }
+    button { margin-top: 10px; width: 100%; padding: 9px; border: none; border-radius: 9px; background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; font-weight: 600; cursor: pointer; }
+    a { color: #4f46e5; }
+  </style>
+</head>
+<body>
+  <div class="h"><b>Arbitragex</b><span>Amazon-Arbitrage-Assistent</span></div>
+  <div class="c">
+    <div class="st" id="status">Prüfe Login…</div>
+    <div id="hint"></div>
+    <label>Arbitragex-URL</label>
+    <input id="baseUrl" placeholder="https://arbitrage.anwaltx.de">
+    <button id="save">Speichern</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
