@@ -147,16 +147,60 @@
       }
     });
   }
+  /* Ist das ueberhaupt eine Produktseite?
+     Auf Kategorie- und Suchseiten stehen Dutzende EANs im Quelltext (Kacheln,
+     Werbebanner). Eine davon anzuzeigen waere geraten — genau wie bei den
+     ASINs, wo der Code das schon laenger ablehnt. Deshalb hier dieselbe
+     Strenge: nur auf erkennbaren Produktseiten ueberhaupt etwas anbieten. */
+  function isProductPage() {
+    /* Die Adresse zuerst: Sie ist das einzige Merkmal, das bei einer
+       Single-Page-App sofort stimmt. Meta-Tags und JSON-LD hinken beim
+       Wechsel hinterher und behaupten teils noch, man stehe auf dem
+       vorherigen Produkt. */
+    const pfad = location.pathname.toLowerCase();
+    const listenSeite = /\/(category|categories|kategorie|search|suche|s\/|c\/|marken?|brand|sale|angebote)(\/|$|\?)/.test(pfad)
+      || /[?&](q|query|search|suchbegriff)=/.test(location.search.toLowerCase());
+    if (listenSeite) return false;
+    // 1. JSON-LD mit @type Product — der verlaesslichste Hinweis
+    const nodes = document.querySelectorAll('script[type="application/ld+json"]');
+    for (const n of nodes) {
+      try {
+        const stack = [JSON.parse(n.textContent)];
+        while (stack.length) {
+          const cur = stack.pop();
+          if (!cur || typeof cur !== "object") continue;
+          if (Array.isArray(cur)) { stack.push(...cur); continue; }
+          const t = cur["@type"];
+          const types = Array.isArray(t) ? t : [t];
+          if (types.some((x) => String(x).toLowerCase() === "product")) return true;
+          Object.values(cur).forEach((v) => { if (v && typeof v === "object") stack.push(v); });
+        }
+      } catch (e) { }
+    }
+    // 2. OpenGraph
+    const og = document.querySelector('meta[property="og:type"]');
+    if (og && /product/i.test(og.getAttribute("content") || "")) return true;
+    // 3. Mikrodaten
+    if (document.querySelector('[itemtype*="schema.org/Product" i]')) return true;
+    return false;
+  }
+
   function findEans() {
     const out = [];
     document.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
       try { collectFromObject(JSON.parse(s.textContent), out); } catch (e) { }
     });
-    document.querySelectorAll('[itemprop="gtin13"],[itemprop="gtin"],[itemprop="gtin12"],[itemprop="gtin14"],meta[property="product:ean"],meta[name="ean"]')
+    // Hoechstes Gewicht: Diese Angaben beziehen sich auf die gerade
+    // ausgewaehlte Variante. JSON-LD listet dagegen oft alle Farben und
+    // Groessen auf einmal — daher dort niedrigeres Gewicht.
+    document.querySelectorAll('[itemprop="gtin13"],[itemprop="gtin"],[itemprop="gtin12"],[itemprop="gtin14"],meta[property="product:ean"],meta[name="ean"],meta[property="og:gtin13"],meta[property="product:retailer_item_id"]')
       .forEach((e) => {
         const code = (e.getAttribute("content") || e.textContent || "").trim();
-        if (isPlausibleEan(code)) out.push({ code: code, weight: 4 });
+        if (isPlausibleEan(code)) out.push({ code: code, weight: 8 });
       });
+    // Steht eine EAN in der Adresszeile (haeufig bei Variantenwechsel), gilt sie.
+    const inUrl = (location.href.match(/\b\d{13}\b/g) || []);
+    inUrl.forEach((c) => { if (isPlausibleEan(c)) out.push({ code: c, weight: 9 }); });
     const keyRe = /["'](?:gtin1[234]|gtin8?|ean(?:13|Code|_code)?|barcode)["']\s*[:=]\s*["']?(\d{8,14})["']?/gi;
     document.querySelectorAll("script:not([src])").forEach((s) => {
       const text = s.textContent;
@@ -263,9 +307,17 @@
 
     const info = pageAsin();
     const eans = findEans();
-    // Auf fremden Seiten braucht es wenigstens eine EAN oder eine ASIN.
-    // Ohne diese Bremse haenge der Chip auf jeder beliebigen Website im Bild.
-    if (!IS_AMAZON && !eans.length && !info.asin) return;
+    // Auf fremden Seiten gilt: nur echte Produktseiten, und dort nur ein
+    // eindeutiges Ergebnis. Eine Kategorieseite listet Dutzende EANs — eine
+    // davon herauszugreifen waere geraten.
+    // Produktseiten fuehren regelmaessig mehrere EANs (Farb- und
+    // Groessenvarianten) — das ist normal und kein Grund zu schweigen.
+    // findEans() sortiert nach Verlaesslichkeit, die erste passt. Vor
+    // Kategorieseiten schuetzt bereits isProductPage().
+    if (!IS_AMAZON) {
+      if (!isProductPage()) return;
+      if (!eans.length && !info.asin) return;
+    }
     const chip = el("div", "axx-chip");
     chip.id = CHIP_ID;
 
@@ -384,7 +436,27 @@
     panel.innerHTML = header() + '<div class="axx-body">' + loading("Lade Produktdaten…") + "</div>";
     wireHeader();
 
-    const res = await state.prefetch;
+    /* Der Abruf holt Buy-Box-Preise fuer vier Marktplaetze ueber die SP-API —
+       das dauert serverseitig und laesst sich hier nicht beschleunigen. Statt
+       eines stummen Spinners sagt das Panel deshalb, woran es gerade haengt,
+       und bricht nach 20 s mit einem klaren Hinweis ab, statt ewig zu drehen. */
+    const startedAt = Date.now();
+    const ticker = setInterval(() => {
+      const box = body();
+      if (!box) return;
+      const sek = Math.round((Date.now() - startedAt) / 1000);
+      if (sek >= 4) {
+        box.innerHTML = loading("Buy-Box-Preise werden geholt… (" + sek + " s)");
+      } else if (sek >= 1) {
+        box.innerHTML = loading("Frage Amazon-Katalog ab…");
+      }
+    }, 1000);
+
+    const abbruch = new Promise((r) => setTimeout(
+      () => r({ step: "error", error: "Zeitüberschreitung — Arbitragex antwortet nicht. Später erneut versuchen." }),
+      20000));
+    const res = await Promise.race([state.prefetch, abbruch]);
+    clearInterval(ticker);
     if (res.step === "login") return renderLogin();
     if (res.step === "noaccount") return renderMsg("Kein Amazon-Konto verbunden",
       "Verbinde dein Konto in Arbitragex → Einstellungen.");
@@ -600,23 +672,81 @@
   }
   init();
 
-  // Amazon navigiert teilweise ohne Reload — dann Chip und Vorladung erneuern.
-  let lastPath = location.pathname;
+  /* ==================================================================
+     Seitenwechsel und Variantenwechsel erkennen
+
+     Shops wie MediaMarkt sind Single-Page-Apps: Beim Wechsel von einer
+     Produktseite zur Kategorie wird nichts neu geladen. Die alten
+     og:-Meta-Tags und JSON-LD-Bloecke bleiben teils sekundenlang stehen —
+     wer sofort danach entscheidet, zeigt die EAN der vorherigen Seite.
+
+     Deshalb: Bei jeder Aenderung erst den Chip entfernen, dann kurz warten,
+     bis der neue Inhalt steht, und erst danach neu bewerten.
+     ================================================================== */
+  const CHIP_VERZOEGERUNG = 900;
+  let neuAufbau = null;
+
+  function chipEntfernen() {
+    const c = document.getElementById(CHIP_ID);
+    if (c) c.remove();
+  }
+
+  function neuBewerten(sofortEntfernen) {
+    if (sofortEntfernen) chipEntfernen();
+    clearTimeout(neuAufbau);
+    neuAufbau = setTimeout(() => {
+      buildChip();
+      if (IS_AMAZON) {
+        const asin = getAsin();
+        // Nur bei echtem Produktwechsel neu laden. Sonst wuerde ein offenes
+        // Panel mitten in der Eingabe zurueckgesetzt.
+        if (asin && asin !== state.asin) {
+          state.data = null; state.prefetch = null; state.catalogEan = null;
+          prefetch(asin);
+          if (panel && panel.classList.contains("open")) openPanel();
+        }
+      }
+    }, CHIP_VERZOEGERUNG);
+  }
+
+  // 1. Adresswechsel (auch ohne Neuladen)
+  let letzteUrl = location.href;
   setInterval(() => {
-    if (location.pathname === lastPath) return;
-    lastPath = location.pathname;
-    state.data = null;
-    state.prefetch = null;
-    state.catalogEan = null;
-    buildChip();
-    if (!IS_AMAZON) return;
-    const asin = getAsin();
-    if (asin) prefetch(asin);
-    if (panel && panel.classList.contains("open")) openPanel();
+    if (location.href === letzteUrl) return;
+    letzteUrl = location.href;
+    neuBewerten(true);
+  }, 400);
+
+  // 2. Inhaltswechsel ohne Adressaenderung — genau das passiert beim
+  //    Umschalten der Farbe. Beobachtet werden nur die Stellen, an denen
+  //    Produktangaben stehen; ein Beobachter auf dem ganzen Body wuerde bei
+  //    jedem Werbebanner feuern.
+  // NUR auf fremden Seiten. Auf Amazon aendert sich der Kopfbereich staendig
+  // (nachgeladene Styles, Tracking-Tags); dort wuerde der Beobachter das Panel
+  // im Sekundentakt neu zeichnen und damit Eingaben und Klicks zerstoeren.
+  const kopf = document.head;
+  if (!IS_AMAZON && kopf && window.MutationObserver) {
+    new MutationObserver(() => neuBewerten(false))
+      .observe(kopf, { childList: true, subtree: true, attributes: true,
+                       attributeFilter: ["content", "href"] });
+  }
+
+  // 3. Sicherheitsnetz: Stimmt die angezeigte EAN nicht mehr mit der besten
+  //    ueberein, neu aufbauen. Faengt Shops ab, die weder Adresse noch
+  //    Kopfbereich anfassen.
+  setInterval(() => {
+    // Bei offenem Panel nichts anfassen — der Nutzer tippt dort gerade.
+    if (panel && panel.classList.contains("open")) return;
+    const chip = document.getElementById(CHIP_ID);
+    if (!chip) return;
+    const feld = chip.querySelector(".axx-cp.ean");
+    const angezeigt = feld ? feld.textContent.trim() : null;
+    const beste = findEans()[0] || null;
+    if (!IS_AMAZON && !isProductPage()) { chipEntfernen(); return; }
+    if (beste && angezeigt && beste !== angezeigt) buildChip();
   }, 1200);
 
-  // Amazon lädt Detailtabellen teils nach: kurz nach dem Start noch einmal
-  // schauen, ob inzwischen eine EAN da ist. Nur solange, bis eine gefunden ist.
+  // 4. Amazon laedt Detailtabellen nach — kurz nachfassen, bis eine EAN da ist
   let rescans = 0;
   const rescan = setInterval(() => {
     if (++rescans > 6) { clearInterval(rescan); return; }
