@@ -91,6 +91,28 @@
   /* --- Vorab laden ---------------------------------------------------------
      Läuft direkt beim Seitenaufruf los. Das Ergebnis liegt im Cache, bevor der
      Nutzer überhaupt klickt — deshalb fühlt sich das Panel sofort an. */
+  /* --- EAN vorab, getrennt von der Analyse ---------------------------------
+     Der Chip steht sofort, die Katalog-EAN kam aber bisher erst mit
+     /api/ext/analyze — und die braucht mehrere Sekunden, weil sie nebenbei
+     Buy-Box-Preise aus vier Marktplaetzen, Gebuehren und Verkaufszahlen holt
+     (gemessen bis 11 s). So lange trugen die Links zu idealo und Google die
+     ASIN, und wer vorher klickte, suchte nach der ASIN statt nach dem Produkt.
+     /api/ext/ean macht nur den einen Katalog-Aufruf (~0,6 s, danach aus dem
+     Cache) und baut den Chip mit der richtigen EAN neu auf. Die Analyse laeuft
+     davon unberuehrt weiter — faellt dieser Aufruf aus, greift wie bisher der
+     Katalogwert aus der Analyse. */
+  function prefetchEan(asin) {
+    if (state.catalogEan) return;
+    api("/api/ext/ean?asin=" + encodeURIComponent(asin)).then((r) => {
+      if (!r || !r.ok || !r.data || !r.data.ean) return;
+      if (state.catalogEan) return;            // Analyse war schneller
+      if (state.asin && state.asin !== asin) return;  // Produkt inzwischen gewechselt
+      state.catalogEan = r.data.ean;
+      const chip = document.getElementById(CHIP_ID);
+      if (chip && !chip.querySelector(".axx-cp.ean")) buildChip();
+    }).catch(() => { /* still bleiben: der Chip funktioniert auch ohne */ });
+  }
+
   function prefetch(asin) {
     state.asin = asin;
     state.prefetch = (async () => {
@@ -668,7 +690,10 @@
     launcher();
     if (!IS_AMAZON) return;     // fremde Seite: nur EAN, kein Katalog-Abruf
     const asin = getAsin();
-    if (asin) prefetch(asin);   // <- ohne Zutun, direkt beim Laden
+    if (asin) {
+      prefetchEan(asin);        // schnell, korrigiert die Links im Chip
+      prefetch(asin);           // <- ohne Zutun, direkt beim Laden
+    }
   }
   init();
 
@@ -702,6 +727,7 @@
         // Panel mitten in der Eingabe zurueckgesetzt.
         if (asin && asin !== state.asin) {
           state.data = null; state.prefetch = null; state.catalogEan = null;
+          prefetchEan(asin);
           prefetch(asin);
           if (panel && panel.classList.contains("open")) openPanel();
         }
