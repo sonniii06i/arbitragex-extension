@@ -24,14 +24,14 @@ Auth: **Login-Session** deiner Arbitragex-Instanz (Cookie). Kein API-Key nötig.
 1. Chrome → `chrome://extensions`
 2. Oben rechts **Entwicklermodus** an.
 3. **Entpackte Erweiterung laden** → Ordner `~/arbitragex-extension/` wählen.
-4. Einmal auf **https://arbitrage.anwaltx.de** einloggen (im selben Chrome-Profil).
+4. Einmal auf **https://arbitragex.de** einloggen (im selben Chrome-Profil).
    Wichtig: nach dem Deploy einmal **neu einloggen**, damit das Session-Cookie
    `SameSite=None` gesetzt wird (sonst sendet Chrome es der Extension nicht).
 5. Amazon-Produktseite öffnen → unten rechts das **AX**-Icon klicken.
 
 ## Konfiguration
 Über das Extension-Popup (Icon in der Toolbar) lässt sich die Arbitragex-URL
-ändern (Standard `https://arbitrage.anwaltx.de`) und der Login-Status prüfen.
+ändern (Standard `https://arbitragex.de`) und der Login-Status prüfen.
 
 ## Aktionen
 - **Listing anlegen** → nutzt `/api/listings/create` (Offer auf die ASIN, je Markt).
@@ -71,7 +71,7 @@ eingetippter Einzelpreis wuerde stillschweigend ueberschrieben. Der Zustand ist 
 1. ZIP entpacken (Ordner muss entpackt bleiben)
 2. `chrome://extensions` -> **Entwicklermodus** einschalten
 3. **Entpackte Erweiterung laden** -> Ordner waehlen
-4. Einmal auf https://arbitrage.anwaltx.de einloggen (setzt das SameSite-Cookie)
+4. Einmal auf https://arbitragex.de einloggen (setzt das SameSite-Cookie)
 
 Download fuer Kunden: **Arbitragex -> Extension** (`/static/arbitragex-extension.zip`).
 

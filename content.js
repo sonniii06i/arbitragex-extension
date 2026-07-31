@@ -366,7 +366,7 @@
       // Ohne ASIN kann das Panel nichts berechnen — dann lieber Arbitragex
       // mit der gefundenen EAN oeffnen, statt ein leeres Panel zu zeigen.
       if (IS_AMAZON) { togglePanel(); return; }
-      const target = "https://arbitrage.anwaltx.de/" + (ean ? "?ean=" + encodeURIComponent(ean) : "");
+      const target = "https://arbitragex.de/" + (ean ? "?ean=" + encodeURIComponent(ean) : "");
       window.open(target, "_blank", "noopener");
     });
     chip.querySelectorAll(".axx-cp").forEach((b) => b.addEventListener("click", (e) => {
@@ -488,7 +488,7 @@
   }
   function renderLogin() {
     body().innerHTML = '<div class="axx-msg"><b>Nicht eingeloggt</b><p>Einmal bei Arbitragex anmelden, dann Seite neu laden.</p>' +
-      '<a class="axx-btn primary" href="https://arbitrage.anwaltx.de/login" target="_blank">Zu Arbitragex-Login</a></div>';
+      '<a class="axx-btn primary" href="https://arbitragex.de/login" target="_blank">Zu Arbitragex-Login</a></div>';
   }
 
   /* --- Panel ---------------------------------------------------------------

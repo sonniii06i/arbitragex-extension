@@ -1,10 +1,20 @@
 // Arbitragex Service-Worker: proxyt API-Calls zur Arbitragex-Instanz mit der
 // Login-Session (Cookie). Content-Scripts dürfen selbst nicht cross-origin.
-const DEFAULT_BASE = "https://arbitrage.anwaltx.de";
+const DEFAULT_BASE = "https://arbitragex.de";
+// Bis v1.6.4 lief alles auf arbitrage.anwaltx.de. Wer die Adresse damals im
+// Popup gesetzt hat, hat sie noch in storage.sync stehen — die wuerde den neuen
+// Default ueberschreiben und die Extension auf der alten Domain festnageln
+// (dort laeuft nach dem Umzug keine Login-Session mehr). Einmalig ausraeumen.
+const LEGACY_BASES = ["https://arbitrage.anwaltx.de", "http://arbitrage.anwaltx.de"];
 
 async function base() {
   const { baseUrl } = await chrome.storage.sync.get("baseUrl");
-  return (baseUrl || DEFAULT_BASE).replace(/\/+$/, "");
+  const stored = (baseUrl || "").replace(/\/+$/, "");
+  if (stored && LEGACY_BASES.includes(stored)) {
+    await chrome.storage.sync.remove("baseUrl");
+    return DEFAULT_BASE;
+  }
+  return (stored || DEFAULT_BASE).replace(/\/+$/, "");
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

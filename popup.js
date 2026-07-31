@@ -1,7 +1,7 @@
 // Die Arbitragex-Adresse ist fest verdrahtet. Sie war frueher im Popup
 // aenderbar — das war eine Fussangel: ein Vertipper legte die Extension still,
 // ohne dass der Grund erkennbar war.
-const BASE = "https://arbitrage.anwaltx.de";
+const BASE = "https://arbitragex.de";
 
 function api(path) {
   return new Promise((resolve) => {
