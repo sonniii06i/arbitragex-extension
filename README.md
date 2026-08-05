@@ -1,9 +1,25 @@
 # Arbitragex — Chrome-Extension
 
+**Neu in 1.8.0** — die Kalkulation sitzt jetzt im **Popup oben rechts** (Klick
+aufs Extension-Icon), nicht mehr in einem eingeblendeten Panel auf der
+Produktseite. Der bodenhohe Drawer verdeckte die halbe PDP und ging nur ueber
+sein eigenes Kreuz wieder zu; das Popup schliesst sich mit einem Klick daneben.
+Inhalt und Rechenweg sind unveraendert — Buy-Box-Kacheln, Aufschlag,
+Roh-Marge, ein Button.
+
+Auf der Seite bleibt nur der **Chip** (ASIN, EAN, Quick-Links). Sein **AX**-Knopf
+oeffnet jetzt dasselbe Popup (`chrome.action.openPopup()`, ab Chrome 127); geht
+das nicht, oeffnet er wie auf fremden Seiten arbitragex.de.
+
+Weil das Popup die Seite nicht selbst kennt, fragt es das Content-Script per
+`chrome.tabs.sendMessage` (`axx-page`, `axx-analyze`). Das **Vorabladen bleibt
+im Content-Script** — es laeuft weiter seit dem Seitenaufruf, deshalb steht das
+Popup beim Oeffnen meist sofort. Dafuer braucht das Manifest `activeTab`.
+
 **Neu in 1.6.0** — die EAN wird jetzt auf *allen* Shop-Seiten erkannt, nicht mehr
 nur auf Amazon. Auf fremden Seiten zeigt die Extension ausschliesslich den
-EAN-Chip mit Kopierknopf und den Quick-Links (idealo/Amazon/Google); Panel und
-Kalkulation bleiben Amazon vorbehalten, weil es dort keine ASIN gibt. Findet die
+EAN-Chip mit Kopierknopf und den Quick-Links (idealo/Amazon/Google); die
+Kalkulation bleibt Amazon vorbehalten, weil es dort keine ASIN gibt. Findet die
 Extension auf einer fremden Seite keine gueltige EAN, erscheint gar nichts —
 sie haengt also nicht auf jeder beliebigen Website im Bild.
 
@@ -14,9 +30,9 @@ verschiedene ASINs, wird bewusst keine ausgewaehlt — das waere geraten.
 Auf Amazon aendert sich nichts: Steht die EAN nicht auf der Seite, holt sie das
 Backend weiterhin ueber die SP-API aus dem Katalog (`/api/ext/analyze`).
 
-Blendet auf jeder Amazon-Produktseite (DE/FR/IT/ES) ein Arbitragex-Panel ein:
-Buy-Box je EU-Markt, Vorschlagspreis (+20/30 %), „verkaufe ich das schon?", und
-zwei Aktionen — **Listing anlegen** und **An Prep ankündigen** — direkt aus der Seite.
+Auf jeder Amazon-Produktseite (DE/FR/IT/ES) liegen im Popup: Buy-Box je EU-Markt,
+Vorschlagspreis (+20/30 %), „verkaufe ich das schon?", und die Aktionen
+**Listing anlegen** und **An Prep ankündigen**.
 
 Auth: **Login-Session** deiner Arbitragex-Instanz (Cookie). Kein API-Key nötig.
 
@@ -27,11 +43,13 @@ Auth: **Login-Session** deiner Arbitragex-Instanz (Cookie). Kein API-Key nötig.
 4. Einmal auf **https://arbitragex.de** einloggen (im selben Chrome-Profil).
    Wichtig: nach dem Deploy einmal **neu einloggen**, damit das Session-Cookie
    `SameSite=None` gesetzt wird (sonst sendet Chrome es der Extension nicht).
-5. Amazon-Produktseite öffnen → unten rechts das **AX**-Icon klicken.
+5. Amazon-Produktseite öffnen → **oben rechts aufs Extension-Icon** klicken
+   (oder unten rechts auf **AX** im Chip).
 
 ## Konfiguration
-Über das Extension-Popup (Icon in der Toolbar) lässt sich die Arbitragex-URL
-ändern (Standard `https://arbitragex.de`) und der Login-Status prüfen.
+Die Arbitragex-Adresse ist seit 1.6.4 fest verdrahtet (`https://arbitragex.de`) —
+ein Vertipper im frueher aenderbaren Feld legte die Extension still, ohne dass
+der Grund erkennbar war. Den Login-Status zeigt das Popup an.
 
 ## Aktionen
 - **Listing anlegen** → nutzt `/api/listings/create` (Offer auf die ASIN, je Markt).
@@ -40,12 +58,13 @@ Auth: **Login-Session** deiner Arbitragex-Instanz (Cookie). Kein API-Key nötig.
 
 ## Dateien
 `manifest.json` (MV3) · `background.js` (Service-Worker, Cookie-Fetch) ·
-`content.js` (Panel) · `panel.css` · `popup.html/js` · `icon128.png`
+`content.js` (Chip + EAN-Erkennung + Vorabladen) · `chip.css` ·
+`popup.html/js/css` (Kalkulation) · `icon128.png`
 
 ## Einkauf registrieren (v1.2.0)
 
-Das Panel laedt die Produktdaten **schon beim Seitenaufruf** (nicht erst beim Klick),
-zeigt alles ohne Ausklappen oder Scrollen und hat genau **einen** Button.
+Die Produktdaten werden **schon beim Seitenaufruf** geladen (nicht erst beim Klick),
+das Popup zeigt alles ohne Ausklappen und hat genau **einen** Button.
 
 | Feld | Herkunft |
 |---|---|
@@ -81,7 +100,7 @@ Statt des runden AX-Knopfes liegt jetzt ein **verschiebbarer Chip** auf der Seit
 
 `[AX] [B07NPQ9NHV] [4059584014954] [⠿]`
 
-* **AX** oeffnet das Panel.
+* **AX** oeffnet das Popup oben rechts (seit 1.8.0; vorher das Panel).
 * **ASIN / EAN anklicken kopiert** sofort (kurzes „kopiert ✓" als Rueckmeldung).
 * **Am Griff ⠿ ziehen** verschiebt den Chip; die Position wird in
   `chrome.storage.sync` gespeichert und gilt ab dann auf allen Seiten.
@@ -111,9 +130,10 @@ sobald er da ist.
 
 ## Panel-Seite + Quelle mit Region (v1.5.0)
 
-* Das Panel faehrt **standardmaessig LINKS** ein — rechts sitzen bei den meisten
-  Nutzern SellerAmp/ProfitGo. Mit **⇄** im Panel-Kopf umschaltbar, die Wahl wird
-  in `chrome.storage.sync` (`panelSide`) gespeichert.
+* ~~Das Panel faehrt standardmaessig LINKS ein, umschaltbar mit **⇄**.~~
+  **Hinfaellig seit 1.8.0** — es gibt kein Panel mehr, und das Popup sitzt
+  ohnehin oben rechts am Icon. `panelSide` in `chrome.storage.sync` wird nicht
+  mehr gelesen.
 * Die **Quelle** eines Einkaufs ist jetzt die volle Domain inkl. Region:
   `amazon.de` statt `amazon` — amazon.de und amazon.fr sind verschiedene Quellen.
 * VK-Feld formatiert zweistellig (`225,90` statt `225,9`).

@@ -1,23 +1,24 @@
-/* Arbitragex Content-Script — Panel auf Amazon-Produktseiten.
+/* Arbitragex Content-Script — Chip auf der Seite + Datenlieferant fuers Popup.
  *
- * Grundsätze dieses Panels:
- *  - Die Produktdaten werden SOFORT beim Laden der Seite geholt, nicht erst beim
- *    Klick. Wer das Panel öffnet, sieht die Zahlen ohne Wartezeit.
- *  - Alles ist auf einen Blick da: keine Ausklapp-Bereiche, kein Scrollen, um an
- *    ein Eingabefeld zu kommen.
- *  - EIN Button. "Einkauf registrieren" legt den Einkauf an; Listing und
- *    Prep-Ankündigung stößt das Backend im selben Zug an.
- *  - Zustand ist immer "neu" — Arbitrage-Ware ist Neuware, die Auswahl war nur
- *    ein Klick, den nie jemand geändert hat.
+ * Seit v1.8.0 gibt es KEIN eingeblendetes Panel mehr. Der bodenhohe Drawer hat
+ * auf der Amazon-Produktseite den halben Bildschirm verdeckt und liess sich nur
+ * ueber sein eigenes Kreuz schliessen — das war im Alltag stoerender als
+ * hilfreich. Die Kalkulation und "Einkauf registrieren" sitzen jetzt im
+ * Extension-Popup oben rechts (popup.html), also da, wo man es von anderen
+ * Shopping-Extensions kennt.
+ *
+ * Was hier bleibt:
+ *  - Der Chip (ASIN, EAN, Quick-Links) — klein, verschiebbar, stoert nicht.
+ *  - Die EAN-Erkennung auf allen Shop-Seiten.
+ *  - Das Vorabladen der Analyse. Es laeuft weiter beim Seitenaufruf, damit das
+ *    Popup die Zahlen ohne Wartezeit zeigt: Das Popup fragt sie hier ab, statt
+ *    selbst zu laden.
  */
 (function () {
   "use strict";
-  const MPS = ["de", "fr", "it", "es"];
-  const FLAG = { de: "🇩🇪", fr: "🇫🇷", it: "🇮🇹", es: "🇪🇸" };
 
   /* Ab v1.6 laeuft das Script auf allen Seiten statt nur auf Amazon.
-     Auf Amazon bleibt alles wie bisher (Panel, Kalkulation, Einkauf erfassen).
-     Ueberall sonst gibt es keine ASIN und damit nichts zu kalkulieren — dort
+     Auf Amazon gibt es ASIN, Kalkulation und Einkauf; ueberall sonst
      beschraenkt sich die Extension auf die EAN aus dem Quelltext. Der Chip
      erscheint auf fremden Seiten nur, wenn wirklich eine gueltige EAN
      gefunden wurde; sonst bleibt die Seite unberuehrt. */
@@ -28,23 +29,11 @@
       chrome.runtime.sendMessage({ path, method, body }, (r) => resolve(r || { ok: false, status: 0 }));
     });
   }
-  function eur(n) {
-    if (n == null || isNaN(n)) return "—";
-    return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
-  }
   function el(tag, cls, html) {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
     if (html != null) e.innerHTML = html;
     return e;
-  }
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-  function num(v) {
-    const n = parseFloat(String(v == null ? "" : v).replace(",", "."));
-    return isNaN(n) ? null : n;
   }
   function getAsin() {
     const m = location.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|gp\/offer-listing)\/([A-Z0-9]{10})/);
@@ -53,44 +42,12 @@
     const a = dp && dp.getAttribute("data-asin");
     return a && /^[A-Z0-9]{10}$/.test(a) ? a : null;
   }
-  function shopName(url) {
-    // Vollstaendige Domain inkl. Laenderendung: "amazon.de" statt "amazon" —
-    // amazon.de und amazon.fr sind verschiedene Quellen.
-    try { return new URL(url).hostname.replace(/^www\./, ""); }
-    catch (e) { return ""; }
-  }
 
-  let panel;
-  const state = { asin: null, data: null, prices: {}, markup: 30, qty: 1, prefetch: null,
-                  catalogEan: null, side: "left" };
-
-  /* Panel-Seite. Standard LINKS, weil rechts meist SellerAmp/ProfitGo sitzt. */
-  async function loadSide() {
-    try {
-      const r = await chrome.storage.sync.get("panelSide");
-      state.side = (r && r.panelSide === "right") ? "right" : "left";
-    } catch (e) { state.side = "left"; }
-    return state.side;
-  }
-  function applySide() {
-    if (!panel) return;
-    panel.classList.remove("side-left", "side-right");
-    panel.classList.add("side-" + state.side);
-  }
-  function flipSide() {
-    state.side = state.side === "left" ? "right" : "left";
-    try { chrome.storage.sync.set({ panelSide: state.side }); } catch (e) { }
-    // Erst Seite wechseln, dann wieder aufklappen — sonst springt es hart.
-    panel.classList.remove("open");
-    applySide();
-    setTimeout(() => panel.classList.add("open"), 30);
-    const b = document.getElementById("axx-side");
-    if (b) b.title = state.side === "left" ? "Nach rechts schieben" : "Nach links schieben";
-  }
+  const state = { asin: null, prefetch: null, catalogEan: null, markup: 30 };
 
   /* --- Vorab laden ---------------------------------------------------------
      Läuft direkt beim Seitenaufruf los. Das Ergebnis liegt im Cache, bevor der
-     Nutzer überhaupt klickt — deshalb fühlt sich das Panel sofort an. */
+     Nutzer überhaupt aufs Extension-Icon klickt. */
   /* --- EAN vorab, getrennt von der Analyse ---------------------------------
      Der Chip steht sofort, die Katalog-EAN kam aber bisher erst mit
      /api/ext/analyze — und die braucht mehrere Sekunden, weil sie nebenbei
@@ -323,6 +280,14 @@
     ta.remove();
   }
 
+  /* Die aktuell beste EAN: erst die Seite, dann der Amazon-Katalog.
+     Amazon zeigt die EAN auf der PDP oft gar nicht an, im Katalog steht sie
+     trotzdem — der Katalogwert kommt aus dem Prefetch. */
+  function besteEan() {
+    const eans = findEans();
+    return eans.length ? eans[0] : (state.catalogEan || null);
+  }
+
   async function buildChip() {
     const old = document.getElementById(CHIP_ID);
     if (old) old.remove();
@@ -343,13 +308,15 @@
     const chip = el("div", "axx-chip");
     chip.id = CHIP_ID;
 
-    // Seite zuerst, SP-API als Rückfall: Amazon zeigt die EAN auf der PDP oft
-    // gar nicht an, im Katalog steht sie trotzdem. Der Katalogwert kommt aus dem
-    // Prefetch, ist also meist schon da, wenn der Chip gebaut wird.
     const ean = eans.length ? eans[0] : (state.catalogEan || null);
 
+    // Der AX-Knopf oeffnet seit v1.8.0 das Extension-Popup (dasselbe wie ein
+    // Klick aufs Icon oben rechts). chrome.action.openPopup() gibt es erst ab
+    // Chrome 127 und nur aus dem Service-Worker heraus — klappt es nicht,
+    // faellt der Knopf auf arbitragex.de im neuen Tab zurueck.
     let html = '<button class="axx-chip-ax" title="' +
-      (IS_AMAZON ? "Arbitragex öffnen" : "Diese EAN in Arbitragex suchen") + '">AX</button>';
+      (IS_AMAZON ? "Arbitragex-Popup öffnen (oder oben rechts aufs Icon klicken)"
+                 : "Diese EAN in Arbitragex suchen") + '">AX</button>';
     if (info.asin) {
       html += '<button class="axx-cp" data-copy="' + info.asin + '" title="ASIN kopieren">' + info.asin + "</button>";
     } else if (info.list && info.list.length > 1) {
@@ -385,9 +352,17 @@
 
     chip.querySelector(".axx-chip-ax").addEventListener("click", (e) => {
       e.stopPropagation();
-      // Ohne ASIN kann das Panel nichts berechnen — dann lieber Arbitragex
-      // mit der gefundenen EAN oeffnen, statt ein leeres Panel zu zeigen.
-      if (IS_AMAZON) { togglePanel(); return; }
+      if (IS_AMAZON) {
+        chrome.runtime.sendMessage({ type: "axx-open-popup" }, (r) => {
+          // Kein Rueckfall bei Erfolg. Schlaegt openPopup fehl (aeltere
+          // Chrome-Version, kein Nutzergesten-Kontext), lieber die Weboberflaeche.
+          if (chrome.runtime.lastError || !r || !r.ok) {
+            const t = "https://arbitragex.de/" + (ean ? "?ean=" + encodeURIComponent(ean) : "");
+            window.open(t, "_blank", "noopener");
+          }
+        });
+        return;
+      }
       const target = "https://arbitragex.de/" + (ean ? "?ean=" + encodeURIComponent(ean) : "");
       window.open(target, "_blank", "noopener");
     });
@@ -431,263 +406,49 @@
     }
   }
 
-  function launcher() { buildChip(); }
+  /* ======================================================================
+     Draht zum Popup
+     Das Popup kennt die Seite nicht — es fragt hier nach. "page" antwortet
+     sofort (ASIN, EAN, Adresse), "analyze" wartet auf das Vorabladen und
+     liefert damit meist ohne spuerbare Verzoegerung.
+     ====================================================================== */
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (!msg || !msg.type) return;
 
-  function togglePanel() {
-    if (panel && panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-    openPanel();
-  }
-
-  async function openPanel() {
-    if (!panel) {
-      panel = el("div", "axx-panel");
-      panel.id = "axx-panel";
-      document.body.appendChild(panel);
-      await loadSide();
+    if (msg.type === "axx-page") {
+      const info = pageAsin();
+      sendResponse({
+        amazon: IS_AMAZON,
+        asin: IS_AMAZON ? (getAsin() || info.asin) : info.asin,
+        ean: besteEan(),
+        url: location.href,
+        title: document.title
+      });
+      return; // synchron beantwortet
     }
-    applySide();
-    panel.classList.add("open");
-    const asin = getAsin();
-    if (!asin) {
-      panel.innerHTML = header() + '<div class="axx-body"></div>';
-      wireHeader();
-      renderMsg("Keine ASIN erkannt", "Öffne eine Amazon-Produktseite (/dp/…).");
+
+    if (msg.type === "axx-analyze") {
+      const asin = getAsin();
+      if (!IS_AMAZON || !asin) { sendResponse({ step: "noasin" }); return; }
+      if (state.asin !== asin || !state.prefetch) prefetch(asin);
+      state.prefetch.then((r) => sendResponse(r)).catch((e) =>
+        sendResponse({ step: "error", error: String((e && e.message) || e) }));
+      return true; // asynchron
+    }
+
+    if (msg.type === "axx-reload") {
+      // Das Popup hat einen neuen Versuch angefordert (z. B. nach Login).
+      const asin = getAsin();
+      state.prefetch = null;
+      if (asin) prefetch(asin);
+      sendResponse({ ok: true });
       return;
     }
-    if (state.asin !== asin || !state.prefetch) prefetch(asin);
-    panel.innerHTML = header() + '<div class="axx-body">' + loading("Lade Produktdaten…") + "</div>";
-    wireHeader();
-
-    /* Der Abruf holt Buy-Box-Preise fuer vier Marktplaetze ueber die SP-API —
-       das dauert serverseitig und laesst sich hier nicht beschleunigen. Statt
-       eines stummen Spinners sagt das Panel deshalb, woran es gerade haengt,
-       und bricht nach 20 s mit einem klaren Hinweis ab, statt ewig zu drehen. */
-    const startedAt = Date.now();
-    const ticker = setInterval(() => {
-      const box = body();
-      if (!box) return;
-      const sek = Math.round((Date.now() - startedAt) / 1000);
-      if (sek >= 4) {
-        box.innerHTML = loading("Buy-Box-Preise werden geholt… (" + sek + " s)");
-      } else if (sek >= 1) {
-        box.innerHTML = loading("Frage Amazon-Katalog ab…");
-      }
-    }, 1000);
-
-    const abbruch = new Promise((r) => setTimeout(
-      () => r({ step: "error", error: "Zeitüberschreitung — Arbitragex antwortet nicht. Später erneut versuchen." }),
-      20000));
-    const res = await Promise.race([state.prefetch, abbruch]);
-    clearInterval(ticker);
-    if (res.step === "login") return renderLogin();
-    if (res.step === "noaccount") return renderMsg("Kein Amazon-Konto verbunden",
-      "Verbinde dein Konto in Arbitragex → Einstellungen.");
-    if (res.step === "error") return renderMsg("Nicht gefunden", res.error);
-
-    state.data = res.data;
-    state.prices = {};
-    MPS.forEach((k) => { state.prices[k] = res.data.suggested[k] != null ? res.data.suggested[k] : ""; });
-    render();
-  }
-
-  function header() {
-    return '<div class="axx-head"><div class="axx-brand"><b>Arbitragex</b><span>' +
-      (state.asin || "") + '</span></div>' +
-      '<button class="axx-side" id="axx-side" title="' +
-      (state.side === "left" ? "Nach rechts schieben" : "Nach links schieben") + '">⇄</button>' +
-      '<button class="axx-x" id="axx-close">✕</button></div>';
-  }
-  function wireHeader() {
-    const x = document.getElementById("axx-close");
-    if (x) x.addEventListener("click", () => panel.classList.remove("open"));
-    const sd = document.getElementById("axx-side");
-    if (sd) sd.addEventListener("click", flipSide);
-  }
-  function loading(t) { return '<div class="axx-load"><span class="axx-spin"></span>' + (t || "Lade…") + "</div>"; }
-  function body() { return panel.querySelector(".axx-body"); }
-  function renderMsg(title, sub) {
-    body().innerHTML = '<div class="axx-msg"><b>' + esc(title) + "</b><p>" + esc(sub || "") + "</p></div>";
-  }
-  function renderLogin() {
-    body().innerHTML = '<div class="axx-msg"><b>Nicht eingeloggt</b><p>Einmal bei Arbitragex anmelden, dann Seite neu laden.</p>' +
-      '<a class="axx-btn primary" href="https://arbitragex.de/login" target="_blank">Zu Arbitragex-Login</a></div>';
-  }
-
-  /* --- Panel ---------------------------------------------------------------
-     Reihenfolge nach Blickverlauf: Was ist das? Was bringt es? Was gebe ich ein?
-     Alles ohne Ausklappen sichtbar. */
-  function render() {
-    const d = state.data;
-    const sells = d.sells || {};
-    const sold = (sells.units || 0) > 0
-      ? '<span class="axx-sold">✓ verkaufst du schon · ' + sells.units + " Stk</span>"
-      : '<span class="axx-sold new">neu für dich</span>';
-
-    // Preise sind ANZEIGE, keine Eingabe: das Backend rechnet den Listing-Preis
-    // beim Anlegen aus Aufschlag + tagesaktueller Buy-Box neu. Ein hier
-    // eingetippter Einzelpreis würde stillschweigend überschrieben — deshalb
-    // steuert nur der Aufschlag, und das Ergebnis ist sichtbar.
-    const cells = MPS.map((k) => {
-      const bb = d.buybox[k];
-      return '<div class="axx-mp' + (bb == null ? " off" : "") + '">' +
-        '<div class="axx-mplab">' + FLAG[k] + " " + k.toUpperCase() + '</div>' +
-        '<div class="axx-mpbb">' + eur(bb) + '</div>' +
-        '<div class="axx-mpout" data-mp="' + k + '">' +
-        (state.prices[k] !== "" ? eur(state.prices[k]) : "—") + "</div></div>";
-    }).join("");
-
-    const prep = d.prep || {};
-    const prepOk = prep.channel === "prepbusiness";
-    const vk = d.buybox && d.buybox.de != null ? Number(d.buybox.de).toFixed(2).replace(".", ",") : "";
-
-    body().innerHTML =
-      '<div class="axx-prod">' +
-        (d.image ? '<img src="' + esc(d.image) + '" alt="">' : '<div class="axx-noimg">📦</div>') +
-        '<div class="axx-pinfo"><div class="axx-title">' + esc(d.title || d.asin) + "</div>" +
-        '<div class="axx-meta">' + (d.brand ? esc(d.brand) + " · " : "") + sold + "</div></div></div>" +
-
-      '<div class="axx-markup"><span>Aufschlag</span>' +
-        '<button class="axx-mk" data-mk="20">+20 %</button>' +
-        '<button class="axx-mk" data-mk="30">+30 %</button>' +
-        '<input id="axx-mkc" type="number" min="0" value="' + state.markup + '"><span>%</span></div>' +
-
-      '<div class="axx-mps">' + cells + "</div>" +
-
-      '<div class="axx-buygrid">' +
-        '<label>EK € / Stück<input id="axx-b-cost" type="text" inputmode="decimal" placeholder="0,00" autofocus></label>' +
-        '<label>Menge<input id="axx-b-qty" type="number" min="1" value="1"></label>' +
-        '<label>VK €<input id="axx-b-sell" type="text" inputmode="decimal" value="' + vk + '"></label>' +
-        '<label>Bestellnr.<input id="axx-b-order" type="text" placeholder="optional"></label>' +
-        '<label class="axx-full">Gekauft bei<input id="axx-b-url" type="url" value="' + esc(location.href) + '"></label>' +
-      "</div>" +
-
-      '<div class="axx-margin" id="axx-b-margin">EK eintragen für Marge</div>' +
-
-      '<button class="axx-btn primary axx-go" id="axx-save">Einkauf registrieren</button>' +
-      '<div class="axx-note">Legt den Einkauf an, listet auf den Märkten mit Preis und meldet ihn ' +
-        (prepOk ? "beim Prep-Center an." : "— Prep ist nicht verbunden.") + "</div>" +
-      '<div class="axx-result" id="axx-result"></div>';
-
-    wire();
-  }
-
-  function wire() {
-    body().querySelectorAll(".axx-mk").forEach((b) => b.addEventListener("click", () => {
-      state.markup = parseFloat(b.getAttribute("data-mk"));
-      const c = document.getElementById("axx-mkc"); if (c) c.value = state.markup;
-      applyMarkup();
-    }));
-    const mkc = document.getElementById("axx-mkc");
-    if (mkc) mkc.addEventListener("input", () => {
-      const v = parseFloat(mkc.value);
-      if (!isNaN(v) && v >= 0) { state.markup = v; applyMarkup(); }
-    });
-
-    const cost = document.getElementById("axx-b-cost");
-    const sell = document.getElementById("axx-b-sell");
-    const qty = document.getElementById("axx-b-qty");
-    [cost, sell, qty].forEach((i) => i && i.addEventListener("input", updateMargin));
-    updateMargin();
-
-    document.getElementById("axx-save").addEventListener("click", save);
-    // Enter im EK-Feld speichert direkt — spart den Griff zur Maus.
-    if (cost) cost.addEventListener("keydown", (e) => { if (e.key === "Enter") save({ currentTarget: document.getElementById("axx-save") }); });
-    if (cost) cost.focus();
-  }
-
-  function applyMarkup() {
-    const bb = state.data.buybox;
-    MPS.forEach((k) => {
-      state.prices[k] = bb[k] != null ? Math.round(bb[k] * (1 + state.markup / 100) * 100) / 100 : "";
-    });
-    body().querySelectorAll(".axx-mpout").forEach((cell) => {
-      const k = cell.getAttribute("data-mp");
-      cell.textContent = state.prices[k] !== "" ? eur(state.prices[k]) : "—";
-    });
-  }
-
-  function updateMargin() {
-    const c = num(document.getElementById("axx-b-cost").value);
-    const s = num(document.getElementById("axx-b-sell").value);
-    const q = parseInt(document.getElementById("axx-b-qty").value, 10) || 1;
-    const box = document.getElementById("axx-b-margin");
-    if (c == null || s == null || c <= 0 || s <= 0) {
-      box.className = "axx-margin";
-      box.textContent = "EK eintragen für Marge";
-      return;
-    }
-    // Roh-Marge OHNE Amazon-Gebühren — die exakte Rechnung macht Arbitragex nach
-    // dem Sync. Hier zählt nur die schnelle Ampel beim Einkauf.
-    const diff = s - c, pct = (diff / s) * 100;
-    box.className = "axx-margin " + (pct >= 25 ? "ok" : pct >= 12 ? "warn" : "bad");
-    box.textContent = "Roh-Marge " + eur(diff) + " / Stk · " + pct.toFixed(1).replace(".", ",") +
-      " % · gesamt " + eur(diff * q) + " (ohne Gebühren)";
-  }
-
-  async function save(e) {
-    const btn = (e && e.currentTarget) || document.getElementById("axx-save");
-    const res = document.getElementById("axx-result");
-    const cost = num(document.getElementById("axx-b-cost").value);
-    if (cost == null || cost <= 0) {
-      res.innerHTML = '<div class="axx-err">Bitte den EK eintragen.</div>';
-      document.getElementById("axx-b-cost").focus();
-      return;
-    }
-    const url = (document.getElementById("axx-b-url").value || "").trim();
-    const qty = parseInt(document.getElementById("axx-b-qty").value, 10) || 1;
-    btn.disabled = true; btn.textContent = "Registriere…";
-    res.innerHTML = "";
-
-    // Anlegen. Das Backend stößt Listing + Prep im Hintergrund an (AUTO_LIST_PREP).
-    const r = await api("/api/purchases", "POST", {
-      asin: state.data.asin,
-      title: state.data.title,
-      image: state.data.image,
-      source: shopName(url),
-      source_url: url,
-      cost: cost,
-      quantity: qty,
-      sell_price: num(document.getElementById("axx-b-sell").value),
-      order_number: (document.getElementById("axx-b-order").value || "").trim(),
-      markup: state.markup
-    });
-
-    if (!r.ok) {
-      btn.disabled = false; btn.textContent = "Einkauf registrieren";
-      res.innerHTML = '<div class="axx-err">' + esc((r.data && r.data.error) || ("HTTP " + r.status)) + "</div>";
-      return;
-    }
-
-    // Steht der Auto-Flow aus, den Export für genau diesen Einkauf nachziehen —
-    // sonst würde "registrieren" nur die Zeile anlegen und nichts auslösen.
-    let listing = null;
-    if (r.data && r.data.auto === false && r.data.id) {
-      const ex = await api("/api/purchases/export", "POST", { ids: [r.data.id] });
-      listing = ex.ok && ex.data && ex.data.results ? ex.data.results[0] : null;
-    }
-
-    btn.disabled = false; btn.textContent = "Einkauf registrieren";
-    const prepTxt = (r.data && r.data.prep_connected) ? " · Prep angemeldet" : "";
-    res.innerHTML = '<div class="axx-res ok">Einkauf registriert · ' + qty + " × " + eur(cost) +
-      "<small>Listing läuft" + prepTxt + ". Status siehst du in Arbitragex → Einkäufe.</small></div>" +
-      (listing && listing.listing ? renderListing(listing.listing) : "");
-    document.getElementById("axx-b-cost").value = "";
-    updateMargin();
-  }
-
-  function renderListing(rows) {
-    return (rows || []).map((x) => {
-      const st = String(x.status).toUpperCase();
-      const cls = st === "ACCEPTED" ? "ok" : st === "FREISCHALTUNG" ? "warn" : "err";
-      const txt = st === "ACCEPTED" ? "gelistet" : st === "FREISCHALTUNG" ? "Freischaltung nötig" : "Fehler";
-      return '<div class="axx-res ' + cls + '">' + (FLAG[x.marketplace] || "") + " " +
-        String(x.marketplace || "").toUpperCase() + " · " + txt + "</div>";
-    }).join("");
-  }
+  });
 
   /* --- Init ---------------------------------------------------------------- */
   function init() {
-    launcher();
+    buildChip();
     if (!IS_AMAZON) return;     // fremde Seite: nur EAN, kein Katalog-Abruf
     const asin = getAsin();
     if (asin) {
@@ -723,13 +484,11 @@
       buildChip();
       if (IS_AMAZON) {
         const asin = getAsin();
-        // Nur bei echtem Produktwechsel neu laden. Sonst wuerde ein offenes
-        // Panel mitten in der Eingabe zurueckgesetzt.
+        // Nur bei echtem Produktwechsel neu laden.
         if (asin && asin !== state.asin) {
-          state.data = null; state.prefetch = null; state.catalogEan = null;
+          state.prefetch = null; state.catalogEan = null;
           prefetchEan(asin);
           prefetch(asin);
-          if (panel && panel.classList.contains("open")) openPanel();
         }
       }
     }, CHIP_VERZOEGERUNG);
@@ -748,8 +507,8 @@
   //    Produktangaben stehen; ein Beobachter auf dem ganzen Body wuerde bei
   //    jedem Werbebanner feuern.
   // NUR auf fremden Seiten. Auf Amazon aendert sich der Kopfbereich staendig
-  // (nachgeladene Styles, Tracking-Tags); dort wuerde der Beobachter das Panel
-  // im Sekundentakt neu zeichnen und damit Eingaben und Klicks zerstoeren.
+  // (nachgeladene Styles, Tracking-Tags); dort wuerde der Beobachter den Chip
+  // im Sekundentakt neu zeichnen.
   const kopf = document.head;
   if (!IS_AMAZON && kopf && window.MutationObserver) {
     new MutationObserver(() => neuBewerten(false))
@@ -761,8 +520,6 @@
   //    ueberein, neu aufbauen. Faengt Shops ab, die weder Adresse noch
   //    Kopfbereich anfassen.
   setInterval(() => {
-    // Bei offenem Panel nichts anfassen — der Nutzer tippt dort gerade.
-    if (panel && panel.classList.contains("open")) return;
     const chip = document.getElementById(CHIP_ID);
     if (!chip) return;
     const feld = chip.querySelector(".axx-cp.ean");

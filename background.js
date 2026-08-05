@@ -18,6 +18,19 @@ async function base() {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // Der AX-Knopf auf der Seite oeffnet das Popup oben rechts. openPopup() gibt
+  // es erst ab Chrome 127 und nur hier im Service-Worker — schlaegt es fehl,
+  // meldet die Antwort das, und der Chip oeffnet stattdessen arbitragex.de.
+  if (msg && msg.type === "axx-open-popup") {
+    try {
+      chrome.action.openPopup()
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false }));
+    } catch (e) { sendResponse({ ok: false }); }
+    return true;
+  }
+  if (!msg || !msg.path) return;   // nicht fuer uns (z. B. Nachrichten ans Content-Script)
+
   (async () => {
     try {
       const b = await base();

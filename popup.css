@@ -1,0 +1,116 @@
+/* Arbitragex Extension — Popup oben rechts (v1.8.0)
+ *
+ * Groesse bewusst wie bei den ueblichen Shopping-Extensions: schmal, hoch
+ * genug fuer die Kalkulation, aber nie mehr als Chrome zulaesst (max. 800x600).
+ * 380 px Breite ist die Grenze, bei der die vier Marktplatz-Kacheln
+ * nebeneinander noch lesbar bleiben.
+ */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  width: 380px;
+  background: #f7f8fc;
+  color: #1e2230;
+  font: 13.5px/1.45 -apple-system, system-ui, "Segoe UI", sans-serif;
+}
+
+.axx-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: #14162a; color: #fff;
+}
+.axx-brand b { font-size: 15px; }
+.axx-brand span { display: block; font-size: 10.5px; opacity: .6; font-family: ui-monospace, monospace; letter-spacing: .5px; }
+.axx-headlnk {
+  color: #c9cce0; text-decoration: none; font-size: 11px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,.18); border-radius: 7px; padding: 5px 9px;
+}
+.axx-headlnk:hover { background: rgba(255,255,255,.1); color: #fff; }
+
+/* Der Inhalt scrollt, nicht das ganze Popup — der Kopf bleibt stehen. */
+.axx-body { padding: 12px 14px 14px; max-height: 540px; overflow-y: auto; }
+
+.axx-load { display: flex; align-items: center; gap: 10px; color: #6b7185; padding: 22px 2px; }
+.axx-spin { width: 16px; height: 16px; border: 2px solid #d7d9e6; border-top-color: #6366f1; border-radius: 50%; animation: axxspin .7s linear infinite; flex: 0 0 auto; }
+@keyframes axxspin { to { transform: rotate(360deg); } }
+.axx-msg { padding: 14px 2px; }
+.axx-msg b { font-size: 14.5px; }
+.axx-msg p { color: #6b7185; margin: 6px 0 12px; }
+
+.axx-prod { display: flex; gap: 10px; background: #fff; border: 1px solid #e7e9f2; border-radius: 13px; padding: 10px; }
+.axx-prod img, .axx-noimg { width: 62px; height: 62px; border-radius: 10px; border: 1px solid #eceef6; object-fit: contain; background: #fff; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.axx-pinfo { min-width: 0; }   /* sonst sprengt ein langer Titel die Kachel */
+.axx-title { font-weight: 600; font-size: 12.5px; max-height: 52px; overflow: hidden; }
+.axx-meta { font-size: 10.5px; color: #8a90a6; margin-top: 3px; font-family: ui-monospace, monospace; }
+.axx-sold { margin-top: 5px; font-size: 11.5px; color: #16794c; font-weight: 600; }
+.axx-sold.new { color: #8a90a6; font-weight: 500; }
+
+.axx-markup { display: flex; align-items: center; gap: 6px; margin: 12px 0 8px; font-size: 11.5px; color: #6b7185; flex-wrap: wrap; }
+.axx-mk { border: 1px solid #d7d9e6; background: #fff; border-radius: 8px; padding: 4px 9px; cursor: pointer; font-weight: 600; color: #4f46e5; }
+.axx-mk:hover { background: #eef0ff; }
+#axx-mkc { width: 54px; padding: 4px 6px; border: 1px solid #d7d9e6; border-radius: 8px; }
+
+/* Marktplaetze als Kacheln — alles ohne Ausklappen sichtbar. */
+.axx-mps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 11px; }
+.axx-mp { background: #fff; border: 1px solid #e7e9f2; border-radius: 10px; padding: 6px 4px; text-align: center; }
+.axx-mp.off { opacity: .5; }
+.axx-mplab { font-size: 9.5px; color: #8a90a6; font-weight: 600; }
+.axx-mpbb { font-size: 10.5px; color: #4a5069; margin: 2px 0 4px; white-space: nowrap; }
+.axx-mpout { padding: 4px 2px; text-align: center; font-size: 11.5px; font-weight: 700; color: #4f46e5; background: #eef0ff; border-radius: 7px; white-space: nowrap; }
+.axx-mp.off .axx-mpout { background: #f1f2f7; color: #9096ab; }
+
+.axx-buygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 10px; }
+.axx-buygrid label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: #8a90a6; font-weight: 600; }
+.axx-buygrid .axx-full { grid-column: 1 / -1; }
+.axx-buygrid input {
+  width: 100%; padding: 7px 8px; border: 1px solid #d7d9e6; border-radius: 8px;
+  font-size: 13px; background: #fff; color: #111827; font-weight: 600;
+}
+.axx-buygrid input:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
+
+.axx-margin {
+  font-size: 11.5px; padding: 7px 9px; border-radius: 8px; margin-bottom: 10px;
+  background: #f1f2f7; color: #6b7185; font-weight: 600; text-align: center;
+}
+.axx-margin.ok   { background: #dcfce7; color: #15803d; }
+.axx-margin.warn { background: #fef3c7; color: #92660c; }
+.axx-margin.bad  { background: #fee2e2; color: #b91c1c; }
+
+.axx-btn {
+  display: block; width: 100%; padding: 11px; border-radius: 10px;
+  border: 1px solid #d7d9e6; background: #fff; cursor: pointer;
+  font-weight: 600; font-size: 13.5px; text-align: center; text-decoration: none; color: #1e2230;
+}
+.axx-btn.primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none; }
+.axx-btn.primary:hover { filter: brightness(1.05); }
+.axx-btn:disabled { opacity: .6; cursor: default; }
+.axx-note { font-size: 10.5px; color: #8a90a6; text-align: center; margin-top: 7px; line-height: 1.5; }
+
+.axx-result { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.axx-res { font-size: 11.5px; padding: 8px 10px; border-radius: 9px; font-weight: 600; }
+.axx-res small { display: block; font-weight: 500; opacity: .85; margin-top: 3px; }
+.axx-res.ok { background: #dcfce7; color: #15803d; }
+.axx-res.warn { background: #fef3c7; color: #92660c; }
+.axx-res.err { background: #fee2e2; color: #b91c1c; }
+.axx-err { background: #fee2e2; color: #b91c1c; padding: 8px 10px; border-radius: 9px; font-size: 11.5px; }
+
+/* Kopierbare Codes (ASIN/EAN) — auch auf Nicht-Amazon-Seiten nuetzlich. */
+.axx-codes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.axx-code {
+  border: 1px solid #d7d9e6; background: #fff; border-radius: 8px;
+  padding: 6px 9px; cursor: pointer; font: 600 11.5px ui-monospace, Menlo, monospace; color: #4a5069;
+}
+.axx-code:hover { background: #eef0ff; }
+.axx-code.copied { background: #059669; color: #fff; border-color: #059669; }
+.axx-code b { color: #8a90a6; font-weight: 600; margin-right: 5px; }
+
+.axx-links { display: flex; gap: 6px; margin-bottom: 10px; }
+.axx-links a {
+  flex: 1; text-align: center; padding: 7px 4px; border-radius: 8px;
+  border: 1px solid #d7d9e6; background: #fff; color: #4a5069;
+  text-decoration: none; font-size: 11px; font-weight: 700;
+}
+.axx-links a:hover { background: #eef0ff; color: #4f46e5; }
+
+.axx-status { font-size: 11px; color: #8a90a6; text-align: center; margin-top: 10px; }
+.axx-status.bad { color: #b91c1c; font-weight: 600; }
+.axx-status a { color: #4f46e5; }

@@ -1,0 +1,66 @@
+/* Arbitragex Extension — Styles fuer den Chip auf der Seite (namespaced axx-).
+ *
+ * Bis v1.7 hiess diese Datei panel.css und trug zusaetzlich den bodenhohen
+ * Drawer (#axx-panel). Der ist raus: Die Kalkulation sitzt jetzt im
+ * Extension-Popup (popup.css). Auf der Seite selbst bleibt nur noch der Chip —
+ * klein, verschiebbar, verdeckt nichts.
+ */
+
+/* --- Chip: AX + ASIN + EAN, frei verschiebbar (v1.3.0) --------------------
+   Liegt per Default unten rechts; sobald der Nutzer ihn zieht, gewinnt die
+   gespeicherte Position (left/top). */
+.axx-chip {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2147483646;
+  display: flex;
+  align-items: stretch;
+  gap: 1px;
+  background: #10131f;
+  border-radius: 11px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .3);
+  font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  user-select: none;
+}
+.axx-chip.dragging { opacity: .85; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+.axx-chip button {
+  border: none;
+  background: transparent;
+  color: #e8eaf4;
+  padding: 9px 11px;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+.axx-chip .axx-chip-ax {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: .5px;
+}
+.axx-chip .axx-chip-ax:hover { filter: brightness(1.12); }
+.axx-chip .axx-cp:hover { background: #232838; }
+.axx-chip .axx-cp.ean { color: #7dd3a8; }
+.axx-chip .axx-cp.copied { background: #059669 !important; color: #fff; }
+.axx-chip .axx-grip {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  color: #5b6178;
+  cursor: grab;
+  font-size: 13px;
+}
+.axx-chip .axx-grip:active { cursor: grabbing; }
+
+/* Quick-Links im Chip (v1.4.0) */
+.axx-chip .axx-lnk {
+  display: flex; align-items: center; padding: 0 9px;
+  color: #aab0c6; text-decoration: none; font-size: 11px; font-weight: 700;
+  border-left: 1px solid rgba(255,255,255,.07);
+}
+.axx-chip .axx-lnk:hover { background: #232838; color: #fff; }
+.axx-chip .axx-lnk.idealo:hover { background: #1f4ba8; color: #fff; }
+.axx-chip .axx-lnk.amazon:hover { background: #b45309; color: #fff; }
+.axx-chip .axx-lnk.goog:hover   { background: #1a73e8; color: #fff; }
