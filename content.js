@@ -446,17 +446,46 @@
     }
   });
 
-  /* --- Init ---------------------------------------------------------------- */
+  /* --- Init ----------------------------------------------------------------
+     Zweigeteilt, und zwar aus einem Grund: Das Script laeuft seit v1.8.2 mit
+     `run_at: document_start`. Die ASIN steht in der Adresse — dafuer braucht es
+     kein DOM. Also geht die Anfrage an Arbitragex raus, WAEHREND Amazon noch
+     laedt, statt erst danach. Auf einer Amazon-Produktseite sind das ein bis
+     drei Sekunden, die das Popup spaeter nicht mehr warten muss.
+
+     Alles mit DOM-Bezug (Chip, EAN aus dem Quelltext, Beobachter) wartet
+     dagegen bis document.body existiert. */
+  function asinAusAdresse() {
+    const m = location.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|gp\/offer-listing)\/([A-Z0-9]{10})/);
+    return m ? m[1] : null;
+  }
+
+  function vorabladenStarten() {
+    if (!IS_AMAZON) return;     // fremde Seite: nur EAN, kein Katalog-Abruf
+    const asin = asinAusAdresse();
+    if (!asin || state.asin === asin) return;
+    prefetchEan(asin);          // schnell, korrigiert die Links im Chip
+    prefetch(asin);             // <- ohne Zutun, direkt beim Laden
+  }
+  vorabladenStarten();          // sofort, noch bevor die Seite steht
+
   function init() {
     buildChip();
-    if (!IS_AMAZON) return;     // fremde Seite: nur EAN, kein Katalog-Abruf
+    if (!IS_AMAZON) return;
+    // Nachziehen fuer die Faelle, in denen die Adresse allein keine ASIN hergab
+    // (z. B. /gp/aw/d-Varianten oder ein einzelnes data-asin im Markup).
     const asin = getAsin();
-    if (asin) {
-      prefetchEan(asin);        // schnell, korrigiert die Links im Chip
-      prefetch(asin);           // <- ohne Zutun, direkt beim Laden
+    if (asin && state.asin !== asin) {
+      prefetchEan(asin);
+      prefetch(asin);
     }
   }
-  init();
+
+  function wennDomBereit(fn) {
+    if (document.body) { fn(); return; }
+    document.addEventListener("DOMContentLoaded", fn, { once: true });
+  }
+  wennDomBereit(init);
 
   /* ==================================================================
      Seitenwechsel und Variantenwechsel erkennen
@@ -494,47 +523,51 @@
     }, CHIP_VERZOEGERUNG);
   }
 
-  // 1. Adresswechsel (auch ohne Neuladen)
-  let letzteUrl = location.href;
-  setInterval(() => {
-    if (location.href === letzteUrl) return;
-    letzteUrl = location.href;
-    neuBewerten(true);
-  }, 400);
+  /* Alle Beobachter haengen am DOM und werden deshalb erst gestartet, wenn es
+     steht — bei `document_start` gibt es weder body noch head. */
+  wennDomBereit(() => {
+    // 1. Adresswechsel (auch ohne Neuladen)
+    let letzteUrl = location.href;
+    setInterval(() => {
+      if (location.href === letzteUrl) return;
+      letzteUrl = location.href;
+      neuBewerten(true);
+    }, 400);
 
-  // 2. Inhaltswechsel ohne Adressaenderung — genau das passiert beim
-  //    Umschalten der Farbe. Beobachtet werden nur die Stellen, an denen
-  //    Produktangaben stehen; ein Beobachter auf dem ganzen Body wuerde bei
-  //    jedem Werbebanner feuern.
-  // NUR auf fremden Seiten. Auf Amazon aendert sich der Kopfbereich staendig
-  // (nachgeladene Styles, Tracking-Tags); dort wuerde der Beobachter den Chip
-  // im Sekundentakt neu zeichnen.
-  const kopf = document.head;
-  if (!IS_AMAZON && kopf && window.MutationObserver) {
-    new MutationObserver(() => neuBewerten(false))
-      .observe(kopf, { childList: true, subtree: true, attributes: true,
-                       attributeFilter: ["content", "href"] });
-  }
+    // 2. Inhaltswechsel ohne Adressaenderung — genau das passiert beim
+    //    Umschalten der Farbe. Beobachtet werden nur die Stellen, an denen
+    //    Produktangaben stehen; ein Beobachter auf dem ganzen Body wuerde bei
+    //    jedem Werbebanner feuern.
+    // NUR auf fremden Seiten. Auf Amazon aendert sich der Kopfbereich staendig
+    // (nachgeladene Styles, Tracking-Tags); dort wuerde der Beobachter den Chip
+    // im Sekundentakt neu zeichnen.
+    const kopf = document.head;
+    if (!IS_AMAZON && kopf && window.MutationObserver) {
+      new MutationObserver(() => neuBewerten(false))
+        .observe(kopf, { childList: true, subtree: true, attributes: true,
+                         attributeFilter: ["content", "href"] });
+    }
 
-  // 3. Sicherheitsnetz: Stimmt die angezeigte EAN nicht mehr mit der besten
-  //    ueberein, neu aufbauen. Faengt Shops ab, die weder Adresse noch
-  //    Kopfbereich anfassen.
-  setInterval(() => {
-    const chip = document.getElementById(CHIP_ID);
-    if (!chip) return;
-    const feld = chip.querySelector(".axx-cp.ean");
-    const angezeigt = feld ? feld.textContent.trim() : null;
-    const beste = findEans()[0] || null;
-    if (!IS_AMAZON && !isProductPage()) { chipEntfernen(); return; }
-    if (beste && angezeigt && beste !== angezeigt) buildChip();
-  }, 1200);
+    // 3. Sicherheitsnetz: Stimmt die angezeigte EAN nicht mehr mit der besten
+    //    ueberein, neu aufbauen. Faengt Shops ab, die weder Adresse noch
+    //    Kopfbereich anfassen.
+    setInterval(() => {
+      const chip = document.getElementById(CHIP_ID);
+      if (!chip) return;
+      const feld = chip.querySelector(".axx-cp.ean");
+      const angezeigt = feld ? feld.textContent.trim() : null;
+      const beste = findEans()[0] || null;
+      if (!IS_AMAZON && !isProductPage()) { chipEntfernen(); return; }
+      if (beste && angezeigt && beste !== angezeigt) buildChip();
+    }, 1200);
 
-  // 4. Amazon laedt Detailtabellen nach — kurz nachfassen, bis eine EAN da ist
-  let rescans = 0;
-  const rescan = setInterval(() => {
-    if (++rescans > 6) { clearInterval(rescan); return; }
-    const chip = document.getElementById(CHIP_ID);
-    if (chip && chip.querySelector(".axx-cp.ean")) { clearInterval(rescan); return; }
-    if (findEans().length) buildChip();
-  }, 1000);
+    // 4. Amazon laedt Detailtabellen nach — kurz nachfassen, bis eine EAN da ist
+    let rescans = 0;
+    const rescan = setInterval(() => {
+      if (++rescans > 6) { clearInterval(rescan); return; }
+      const chip = document.getElementById(CHIP_ID);
+      if (chip && chip.querySelector(".axx-cp.ean")) { clearInterval(rescan); return; }
+      if (findEans().length) buildChip();
+    }, 1000);
+  });
 })();
