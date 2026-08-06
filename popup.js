@@ -97,16 +97,32 @@ function renderLogin() {
     else if (sek >= 1) box.innerHTML = loading("Frage Amazon-Katalog ab…");
   }, 1000);
 
-  const abbruch = new Promise((r) => setTimeout(
+  const frist = () => new Promise((r) => setTimeout(
     () => r({ step: "error", error: "Zeitüberschreitung — Arbitragex antwortet nicht. Später erneut versuchen." }),
     20000));
-  const res = await Promise.race([page("axx-analyze"), abbruch]);
-  clearInterval(ticker);
+  let res = await Promise.race([page("axx-analyze"), frist()]);
+  clearInterval(ticker);   // sonst ueberschreibt der Ticker die Meldung unten
+
+  /* Das Vorabladen laeuft beim SEITENAUFRUF. Wer sich erst danach einloggt oder
+     sein Amazon-Konto verbindet, bekam bis dahin ewig das eingefrorene
+     "nicht eingeloggt"/"kein Konto" zu sehen — bis er die Amazon-Seite neu lud.
+     Darauf kommt niemand. Also einmal frisch nachfragen und, wenn es jetzt
+     passt, das Vorabladen im Content-Script verwerfen und neu holen. */
+  if (res && (res.step === "login" || res.step === "noaccount")) {
+    const me = await api("/api/ext/me");
+    if (me.ok && me.data && me.data.email && me.data.connected) {
+      await page("axx-reload");
+      const box = body();
+      if (box) box.innerHTML = loading("Verbindung gefunden — lade Produktdaten…");
+      res = await Promise.race([page("axx-analyze"), frist()]);
+    }
+  }
 
   if (!res || res.step === "noasin") return renderSeite(info);
   if (res.step === "login") return renderLogin();
   if (res.step === "noaccount") return renderMsg("Kein Amazon-Konto verbunden",
-    "Verbinde dein Konto in Arbitragex → Einstellungen.");
+    "Verbinde dein Konto in Arbitragex → Einstellungen. Danach hier erneut öffnen.",
+    '<a class="axx-btn primary" href="' + BASE + '/#einstellungen" target="_blank" rel="noopener">Einstellungen öffnen</a>');
   if (res.step === "error") return renderMsg("Nicht gefunden", res.error);
 
   state.data = res.data;
