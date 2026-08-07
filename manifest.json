@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Arbitragex",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "Arbitrage-Kalkulation, Einkauf erfassen, Listing anlegen & Sendung an Prep ankuendigen – im Popup oben rechts (Klick aufs Icon). EAN-Erkennung zusaetzlich auf allen anderen Shop-Seiten.",
   "permissions": [
     "storage",

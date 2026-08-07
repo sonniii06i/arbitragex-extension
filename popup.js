@@ -211,6 +211,11 @@ function render() {
   const url = (state.page && state.page.url) || state.tabUrl || "";
 
   body().innerHTML =
+    // Das Ergebnis steht GANZ OBEN und bleibt beim Scrollen stehen. Vorher sass es
+    // unter dem Knopf am Seitenende — nach dem Registrieren musste man erst scrollen,
+    // um ueberhaupt zu sehen, ob es geklappt hat. Genau das darf nicht sein.
+    '<div class="axx-result" id="axx-result"></div>' +
+
     '<div class="axx-prod">' +
       (d.image ? '<img src="' + esc(d.image) + '" alt="">' : '<div class="axx-noimg">📦</div>') +
       '<div class="axx-pinfo"><div class="axx-title">' + esc(d.title || d.asin) + "</div>" +
@@ -231,12 +236,15 @@ function render() {
       '<label class="axx-full">Gekauft bei<input id="axx-b-url" type="url" value="' + esc(url) + '"></label>' +
     "</div>" +
 
-    '<div class="axx-margin" id="axx-b-margin">EK eintragen für Marge</div>' +
-
+    // KEINE Margen-/Gebuehren-Rechnung mehr an dieser Stelle. Sie konnte nur die
+    // Roh-Differenz VK-EK zeigen: Amazon-Gebuehren, FBA und Prep kennt die Extension
+    // nicht. Das sah nach Marge aus, war aber immer zu optimistisch. Die belastbare
+    // Rechnung macht Arbitragex nach dem Sync mit den echten Gebuehren.
     '<button class="axx-btn primary" id="axx-save">Einkauf registrieren</button>' +
-    '<div class="axx-note">Legt den Einkauf an, listet auf den Märkten mit Preis und meldet ihn ' +
-      (prepOk ? "beim Prep-Center an." : "— Prep ist nicht verbunden.") + "</div>" +
-    '<div class="axx-result" id="axx-result"></div>';
+    // Bewusst einzeilig: jede zweite Zeile hier kostet den Platz, der das Popup
+    // sonst wieder ins Scrollen zwingt.
+    '<div class="axx-note">Anlegen · Listing mit Preis · ' +
+      (prepOk ? "Prep-Anmeldung" : "Prep nicht verbunden") + "</div>";
 
   wire();
 }
@@ -254,11 +262,6 @@ function wire() {
   });
 
   const cost = document.getElementById("axx-b-cost");
-  const sell = document.getElementById("axx-b-sell");
-  const qty = document.getElementById("axx-b-qty");
-  [cost, sell, qty].forEach((i) => i && i.addEventListener("input", updateMargin));
-  updateMargin();
-
   document.getElementById("axx-save").addEventListener("click", save);
   // Enter im EK-Feld speichert direkt — spart den Griff zur Maus.
   if (cost) cost.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
@@ -276,30 +279,13 @@ function applyMarkup() {
   });
 }
 
-function updateMargin() {
-  const c = num(document.getElementById("axx-b-cost").value);
-  const s = num(document.getElementById("axx-b-sell").value);
-  const q = parseInt(document.getElementById("axx-b-qty").value, 10) || 1;
-  const box = document.getElementById("axx-b-margin");
-  if (c == null || s == null || c <= 0 || s <= 0) {
-    box.className = "axx-margin";
-    box.textContent = "EK eintragen für Marge";
-    return;
-  }
-  // Roh-Marge OHNE Amazon-Gebühren — die exakte Rechnung macht Arbitragex nach
-  // dem Sync. Hier zählt nur die schnelle Ampel beim Einkauf.
-  const diff = s - c, pct = (diff / s) * 100;
-  box.className = "axx-margin " + (pct >= 25 ? "ok" : pct >= 12 ? "warn" : "bad");
-  box.textContent = "Roh-Marge " + eur(diff) + " / Stk · " + pct.toFixed(1).replace(".", ",") +
-    " % · gesamt " + eur(diff * q) + " (ohne Gebühren)";
-}
-
 async function save() {
   const btn = document.getElementById("axx-save");
   const res = document.getElementById("axx-result");
   const cost = num(document.getElementById("axx-b-cost").value);
   if (cost == null || cost <= 0) {
     res.innerHTML = '<div class="axx-err">Bitte den EK eintragen.</div>';
+    showResult();
     document.getElementById("axx-b-cost").focus();
     return;
   }
@@ -325,6 +311,7 @@ async function save() {
   if (!r.ok) {
     btn.disabled = false; btn.textContent = "Einkauf registrieren";
     res.innerHTML = '<div class="axx-err">' + esc((r.data && r.data.error) || ("HTTP " + r.status)) + "</div>";
+    showResult();
     return;
   }
 
@@ -338,11 +325,25 @@ async function save() {
 
   btn.disabled = false; btn.textContent = "Einkauf registrieren";
   const prepTxt = (r.data && r.data.prep_connected) ? " · Prep angemeldet" : "";
+  // Was wirklich passiert, haengt am Haken „Produkt bei Amazon anlegen" — nicht
+  // behaupten, es werde gelistet, wenn der Nutzer das abgeschaltet hat.
+  const listTxt = (r.data && r.data.listing_enabled === false)
+    ? "Amazon-Listing ist in den Einstellungen aus"
+    : "Listing läuft";
   res.innerHTML = '<div class="axx-res ok">Einkauf registriert · ' + qty + " × " + eur(cost) +
-    "<small>Listing läuft" + prepTxt + ". Status siehst du in Arbitragex → Einkäufe.</small></div>" +
+    "<small>" + listTxt + prepTxt + ". Status siehst du in Arbitragex → Einkäufe.</small></div>" +
     (listing && listing.listing ? renderListing(listing.listing) : "");
   document.getElementById("axx-b-cost").value = "";
-  updateMargin();
+  showResult();
+}
+
+/* Das Ergebnis muss ohne Scrollen sichtbar sein. Es steht oben im Popup und klebt
+   dort fest; zusaetzlich springt der Inhalt nach oben, falls der Nutzer beim
+   Ausfuellen weiter unten war. Sonst quittiert das Popup den Klick scheinbar gar
+   nicht — man sieht die Bestaetigung erst nach dem Scrollen. */
+function showResult() {
+  const b = body();
+  if (b) b.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderListing(rows) {

@@ -1,4 +1,4 @@
-/* Arbitragex Extension — Popup oben rechts (v1.8.0)
+/* Arbitragex Extension — Popup oben rechts (v1.8.3)
  *
  * Groesse bewusst wie bei den ueblichen Shopping-Extensions: schmal, hoch
  * genug fuer die Kalkulation, aber nie mehr als Chrome zulaesst (max. 800x600).
@@ -36,21 +36,21 @@ body {
 .axx-msg b { font-size: 14.5px; }
 .axx-msg p { color: #6b7185; margin: 6px 0 12px; }
 
-.axx-prod { display: flex; gap: 10px; background: #fff; border: 1px solid #e7e9f2; border-radius: 13px; padding: 10px; }
+.axx-prod { display: flex; gap: 10px; background: #fff; border: 1px solid #e7e9f2; border-radius: 13px; padding: 9px; }
 .axx-prod img, .axx-noimg { width: 62px; height: 62px; border-radius: 10px; border: 1px solid #eceef6; object-fit: contain; background: #fff; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; }
 .axx-pinfo { min-width: 0; }   /* sonst sprengt ein langer Titel die Kachel */
-.axx-title { font-weight: 600; font-size: 12.5px; max-height: 52px; overflow: hidden; }
+.axx-title { font-weight: 600; font-size: 12.5px; max-height: 36px; overflow: hidden; }
 .axx-meta { font-size: 10.5px; color: #8a90a6; margin-top: 3px; font-family: ui-monospace, monospace; }
 .axx-sold { margin-top: 5px; font-size: 11.5px; color: #16794c; font-weight: 600; }
 .axx-sold.new { color: #8a90a6; font-weight: 500; }
 
-.axx-markup { display: flex; align-items: center; gap: 6px; margin: 12px 0 8px; font-size: 11.5px; color: #6b7185; flex-wrap: wrap; }
+.axx-markup { display: flex; align-items: center; gap: 6px; margin: 10px 0 7px; font-size: 11.5px; color: #6b7185; flex-wrap: wrap; }
 .axx-mk { border: 1px solid #d7d9e6; background: #fff; border-radius: 8px; padding: 4px 9px; cursor: pointer; font-weight: 600; color: #4f46e5; }
 .axx-mk:hover { background: #eef0ff; }
 #axx-mkc { width: 54px; padding: 4px 6px; border: 1px solid #d7d9e6; border-radius: 8px; }
 
 /* Marktplaetze als Kacheln — alles ohne Ausklappen sichtbar. */
-.axx-mps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 11px; }
+.axx-mps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 9px; }
 .axx-mp { background: #fff; border: 1px solid #e7e9f2; border-radius: 10px; padding: 6px 4px; text-align: center; }
 .axx-mp.off { opacity: .5; }
 .axx-mplab { font-size: 9.5px; color: #8a90a6; font-weight: 600; }
@@ -58,7 +58,7 @@ body {
 .axx-mpout { padding: 4px 2px; text-align: center; font-size: 11.5px; font-weight: 700; color: #4f46e5; background: #eef0ff; border-radius: 7px; white-space: nowrap; }
 .axx-mp.off .axx-mpout { background: #f1f2f7; color: #9096ab; }
 
-.axx-buygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 10px; }
+.axx-buygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 9px; }
 .axx-buygrid label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: #8a90a6; font-weight: 600; }
 .axx-buygrid .axx-full { grid-column: 1 / -1; }
 .axx-buygrid input {
@@ -66,14 +66,6 @@ body {
   font-size: 13px; background: #fff; color: #111827; font-weight: 600;
 }
 .axx-buygrid input:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
-
-.axx-margin {
-  font-size: 11.5px; padding: 7px 9px; border-radius: 8px; margin-bottom: 10px;
-  background: #f1f2f7; color: #6b7185; font-weight: 600; text-align: center;
-}
-.axx-margin.ok   { background: #dcfce7; color: #15803d; }
-.axx-margin.warn { background: #fef3c7; color: #92660c; }
-.axx-margin.bad  { background: #fee2e2; color: #b91c1c; }
 
 .axx-btn {
   display: block; width: 100%; padding: 11px; border-radius: 10px;
@@ -85,7 +77,17 @@ body {
 .axx-btn:disabled { opacity: .6; cursor: default; }
 .axx-note { font-size: 10.5px; color: #8a90a6; text-align: center; margin-top: 7px; line-height: 1.5; }
 
-.axx-result { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+/* Ergebnis-Bereich: steht als ERSTES im Body und klebt beim Scrollen oben fest.
+   Vorher sass er unter dem Registrieren-Knopf ganz unten — die Bestaetigung war
+   dann nur nach dem Scrollen zu sehen, der Klick wirkte folgenlos.
+   Leer nimmt er keinen Platz weg (:empty), sonst klaffte oben eine Luecke. */
+.axx-result {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; flex-direction: column; gap: 6px;
+  margin: -12px -14px 10px; padding: 12px 14px 0;
+  background: #f7f8fc;
+}
+.axx-result:empty { display: none; }
 .axx-res { font-size: 11.5px; padding: 8px 10px; border-radius: 9px; font-weight: 600; }
 .axx-res small { display: block; font-weight: 500; opacity: .85; margin-top: 3px; }
 .axx-res.ok { background: #dcfce7; color: #15803d; }
