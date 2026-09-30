@@ -17,7 +17,25 @@ async function base() {
   return (stored || DEFAULT_BASE).replace(/\/+$/, "");
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+// Nur diese API-Pfade darf der Proxy aufrufen (Methode + Pfad ohne Query).
+// Vorher reichte er JEDEN Pfad mit Login-Cookie weiter — ein manipuliertes
+// Content-Script haette so beliebige Konto-Endpunkte bedienen koennen.
+// Neuer Endpunkt in content.js/popup.js => hier eintragen.
+const ALLOWED = {
+  GET: ["/api/ext/me", "/api/ext/ean", "/api/ext/analyze"],
+  POST: ["/api/purchases", "/api/purchases/export"],
+};
+
+function allowed(method, path) {
+  if (typeof path !== "string" || !path.startsWith("/api/")) return false;
+  if (path.includes("..") || path.includes("//") || path.includes("\\")) return false;
+  const p = path.split("?")[0].split("#")[0];
+  return (ALLOWED[method] || []).includes(p);
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Nur Nachrichten aus dieser Extension (Content-Script/Popup) annehmen.
+  if (!sender || sender.id !== chrome.runtime.id) return;
   // Der AX-Knopf auf der Seite oeffnet das Popup oben rechts. openPopup() gibt
   // es erst ab Chrome 127 und nur hier im Service-Worker — schlaegt es fehl,
   // meldet die Antwort das, und der Chip oeffnet stattdessen arbitragex.de.
@@ -31,10 +49,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (!msg || !msg.path) return;   // nicht fuer uns (z. B. Nachrichten ans Content-Script)
 
+  const method = String(msg.method || "GET").toUpperCase();
+  if (!allowed(method, msg.path)) {
+    sendResponse({ ok: false, status: 403, error: "Pfad nicht erlaubt" });
+    return;
+  }
+
   (async () => {
     try {
       const b = await base();
-      const opts = { method: msg.method || "GET", credentials: "include", headers: {} };
+      const opts = { method, credentials: "include", headers: {} };
       if (msg.body) {
         opts.headers["Content-Type"] = "application/json";
         opts.body = JSON.stringify(msg.body);
