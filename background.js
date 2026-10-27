@@ -22,7 +22,7 @@ async function base() {
 // Content-Script haette so beliebige Konto-Endpunkte bedienen koennen.
 // Neuer Endpunkt in content.js/popup.js => hier eintragen.
 const ALLOWED = {
-  GET: ["/api/ext/me", "/api/ext/ean", "/api/ext/analyze"],
+  GET: ["/api/ext/me", "/api/ext/ean", "/api/ext/analyze", "/api/ext/skus"],
   POST: ["/api/purchases", "/api/purchases/export"],
 };
 

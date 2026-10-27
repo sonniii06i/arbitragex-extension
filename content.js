@@ -58,13 +58,21 @@
      Cache) und baut den Chip mit der richtigen EAN neu auf. Die Analyse laeuft
      davon unberuehrt weiter — faellt dieser Aufruf aus, greift wie bisher der
      Katalogwert aus der Analyse. */
+  /* Katalog-EAN vom Server nur als reine Ziffernfolge uebernehmen. Sie landet
+     per innerHTML im Chip auf amazon.de; ein fehlerhafter oder manipulierter
+     Serverwert duerfte dort sonst Markup (und Handler) einschleusen. */
+  function katalogEan(v) {
+    const code = String(v == null ? "" : v).trim();
+    return /^\d{8,14}$/.test(code) && isPlausibleEan(code) ? code : null;
+  }
+
   function prefetchEan(asin) {
     if (state.catalogEan) return;
     api("/api/ext/ean?asin=" + encodeURIComponent(asin)).then((r) => {
-      if (!r || !r.ok || !r.data || !r.data.ean) return;
+      if (!r || !r.ok || !r.data || !katalogEan(r.data.ean)) return;
       if (state.catalogEan) return;            // Analyse war schneller
       if (state.asin && state.asin !== asin) return;  // Produkt inzwischen gewechselt
-      state.catalogEan = r.data.ean;
+      state.catalogEan = katalogEan(r.data.ean);
       const chip = document.getElementById(CHIP_ID);
       if (chip && !chip.querySelector(".axx-cp.ean")) buildChip();
     }).catch(() => { /* still bleiben: der Chip funktioniert auch ohne */ });
@@ -80,8 +88,8 @@
       if (!r.ok) return { step: "error", error: (r.data && r.data.error) || ("HTTP " + r.status) };
       if (r.data && r.data.error) return { step: "error", error: r.data.error };
       // Katalog-EAN merken; wenn die Seite selbst keine hergab, Chip neu bauen.
-      if (r.data && r.data.ean) {
-        state.catalogEan = r.data.ean;
+      if (r.data && katalogEan(r.data.ean)) {
+        state.catalogEan = katalogEan(r.data.ean);
         const chip = document.getElementById(CHIP_ID);
         if (chip && !chip.querySelector(".axx-cp.ean")) buildChip();
       }
@@ -551,20 +559,28 @@
     // 3. Sicherheitsnetz: Stimmt die angezeigte EAN nicht mehr mit der besten
     //    ueberein, neu aufbauen. Faengt Shops ab, die weder Adresse noch
     //    Kopfbereich anfassen.
-    setInterval(() => {
-      const chip = document.getElementById(CHIP_ID);
-      if (!chip) return;
-      const feld = chip.querySelector(".axx-cp.ean");
-      const angezeigt = feld ? feld.textContent.trim() : null;
-      const beste = findEans()[0] || null;
-      if (!IS_AMAZON && !isProductPage()) { chipEntfernen(); return; }
-      if (beste && angezeigt && beste !== angezeigt) buildChip();
-    }, 1200);
+    //    NUR auf fremden Seiten: Auf Amazon steht der Chip auf jeder PDP, das
+    //    Netz lief dort endlos alle 1,2 s mit vollem DOM- und Skript-Scan.
+    //    Variantenwechsel aendern auf Amazon die Adresse und laufen ueber (1).
+    if (!IS_AMAZON) {
+      setInterval(() => {
+        const chip = document.getElementById(CHIP_ID);
+        if (!chip) return;
+        if (!isProductPage()) { chipEntfernen(); return; }
+        const feld = chip.querySelector(".axx-cp.ean");
+        const angezeigt = feld ? feld.textContent.trim() : null;
+        const beste = findEans()[0] || null;
+        if (beste && angezeigt && beste !== angezeigt) buildChip();
+      }, 1200);
+    }
 
     // 4. Amazon laedt Detailtabellen nach — kurz nachfassen, bis eine EAN da ist
+    //    Auf fremden Seiten nur, wenn es eine Produktseite ist -- sonst liefen
+    //    auf jeder beliebigen Website sechs volle EAN-Scans ins Leere.
     let rescans = 0;
     const rescan = setInterval(() => {
       if (++rescans > 6) { clearInterval(rescan); return; }
+      if (!IS_AMAZON && !isProductPage()) return;
       const chip = document.getElementById(CHIP_ID);
       if (chip && chip.querySelector(".axx-cp.ean")) { clearInterval(rescan); return; }
       if (findEans().length) buildChip();

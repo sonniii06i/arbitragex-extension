@@ -1,4 +1,4 @@
-/* Arbitragex Extension — Popup oben rechts (v1.8.3)
+/* Arbitragex Extension — Popup oben rechts (v1.8.4)
  *
  * Groesse bewusst wie bei den ueblichen Shopping-Extensions: schmal, hoch
  * genug fuer die Kalkulation, aber nie mehr als Chrome zulaesst (max. 800x600).
@@ -66,6 +66,13 @@ body {
   font-size: 13px; background: #fff; color: #111827; font-weight: 600;
 }
 .axx-buygrid input:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
+.axx-buygrid select {
+  width: 100%; padding: 7px 8px; border: 1px solid #d7d9e6; border-radius: 8px;
+  font-size: 12px; background: #fff; color: #111827; font-weight: 600;
+}
+.axx-buygrid select:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
+.axx-skunote { font-size: 10.5px; color: #b45309; }
+.axx-skunote:empty { display: none; }
 
 .axx-btn {
   display: block; width: 100%; padding: 11px; border-radius: 10px;

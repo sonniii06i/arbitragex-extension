@@ -1,4 +1,4 @@
-/* Arbitragex Popup — Kalkulation und "Einkauf registrieren" (v1.8.0)
+/* Arbitragex Popup — Kalkulation und "Einkauf registrieren" (v1.8.6)
  *
  * Bis v1.7 lief das alles in einem eingeblendeten Drawer auf der Amazon-Seite.
  * Der verdeckte die halbe Produktseite und ging nur ueber sein eigenes Kreuz
@@ -17,7 +17,7 @@ const BASE = "https://arbitragex.de";
 const MPS = ["de", "fr", "it", "es"];
 const FLAG = { de: "🇩🇪", fr: "🇫🇷", it: "🇮🇹", es: "🇪🇸" };
 
-const state = { tabId: null, page: null, data: null, prices: {}, markup: 30 };
+const state = { tabId: null, page: null, data: null, prices: {}, markup: 30, saving: false };
 
 function api(path, method, body) {
   return new Promise((resolve) => {
@@ -234,6 +234,11 @@ function render() {
       '<label>VK €<input id="axx-b-sell" type="text" inputmode="decimal" value="' + vk + '"></label>' +
       '<label>Bestellnr.<input id="axx-b-order" type="text" placeholder="optional"></label>' +
       '<label class="axx-full">Gekauft bei<input id="axx-b-url" type="url" value="' + esc(url) + '"></label>' +
+      // SKU-Wahl: mehrere SKUs je ASIN (Neu FBA, Gebraucht, alte FBM). Vorauswahl
+      // Neu + FBA; „Neue SKU anlegen" blendet den Zustand ein.
+      '<label class="axx-full">SKU<select id="axx-b-sku" disabled><option value="">lade SKUs…</option></select></label>' +
+      '<label class="axx-full" id="axx-b-condbox" style="display:none">Zustand der neuen SKU<select id="axx-b-cond"></select></label>' +
+      '<div class="axx-full axx-skunote" id="axx-b-skunote"></div>' +
     "</div>" +
 
     // KEINE Margen-/Gebuehren-Rechnung mehr an dieser Stelle. Sie konnte nur die
@@ -266,6 +271,56 @@ function wire() {
   // Enter im EK-Feld speichert direkt — spart den Griff zur Maus.
   if (cost) cost.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
   if (cost) cost.focus();
+  // Merken, damit Speichern darauf warten kann (Enter im EK-Feld kommt oft vor der Liste).
+  state.skuLaden = loadSkus();
+}
+
+/* --- SKU-Wahl ------------------------------------------------------------- */
+async function loadSkus() {
+  const sel = document.getElementById("axx-b-sku");
+  const cond = document.getElementById("axx-b-cond");
+  const box = document.getElementById("axx-b-condbox");
+  const note = document.getElementById("axx-b-skunote");
+  if (!sel) return;
+  let hinweis = "";
+  const sync = () => {
+    box.style.display = sel.value === "__neu__" ? "" : "none";
+    const o = sel.selectedOptions[0];
+    // FBM-SKU: der Nachkauf passt dort nur den Preis an, er stellt nicht auf FBA um.
+    note.textContent = (o && o.getAttribute("data-chan") === "FBM")
+      ? "⚠️ FBM-SKU: Es wird nur der Preis angepasst, die Versandart bleibt FBM. Für die Einlagerung bei Amazon eine FBA-SKU wählen oder eine neue anlegen."
+      : hinweis;
+  };
+  sel.addEventListener("change", sync);
+  const r = await api("/api/ext/skus?asin=" + encodeURIComponent(state.data.asin));
+  const d = (r && r.ok && r.data) ? r.data : { skus: [], neu_zustaende: [],
+    warnung: "SKU-Liste nicht abrufbar (" + ((r && r.data && r.data.error) || ("HTTP " + (r ? r.status : 0))) + ")" };
+  const zust = (d.neu_zustaende && d.neu_zustaende.length) ? d.neu_zustaende : [{ value: "new_new", label: "Neu" }];
+  cond.innerHTML = zust.map((z) => '<option value="' + esc(z.value) + '">' + esc(z.label) + "</option>").join("");
+  // Zustand/Versandart einer SKU unbekannt -> nichts vorwählen, sonst entstünde
+  // womöglich ein zweites Neu-Listing.
+  const waehlen = !d.default && d.unklar && (d.skus || []).length;
+  sel.innerHTML = (waehlen ? '<option value="__wahl__">— Bitte SKU wählen —</option>' : "") +
+    (d.skus || []).map((x) => '<option value="' + esc(x.sku) + '" data-chan="' + esc(x.channel || "") + '">' +
+      esc(x.sku + " · " + (x.zustand || "?") + " · " + (x.channel || "?") + " · " +
+        (x.price != null ? eur(x.price) : "kein Preis") +
+        (x.stock != null ? " · " + x.stock + " Stk" : "")) + "</option>").join("") +
+    '<option value="__neu__">＋ Neue SKU anlegen …</option>';
+  sel.value = d.default || (waehlen ? "__wahl__" : "__neu__");
+  sel.disabled = false;
+  state.skusLoaded = true;
+  hinweis = d.warnung ? "⚠️ " + d.warnung
+    : (d.skus || []).length ? "" : "Noch keine SKU zu dieser ASIN — es wird eine neue angelegt.";
+  sync();
+}
+
+function skuWahl() {
+  const sel = document.getElementById("axx-b-sku");
+  if (!sel || !state.skusLoaded) return {};          // Liste noch nicht da -> Server-Standard
+  if (sel.value === "__neu__") {
+    return { new_sku: true, condition: document.getElementById("axx-b-cond").value || "new_new" };
+  }
+  return sel.value ? { sku: sel.value } : {};
 }
 
 function applyMarkup() {
@@ -279,7 +334,17 @@ function applyMarkup() {
   });
 }
 
+// Sperre gegen Doppel-Registrierung: btn.disabled schuetzt nur den Klick, nicht
+// das Enter im EK-Feld. Zwei Enter in Folge legten zwei Einkaeufe an -- jeder mit
+// eigenem Listing und eigener Prep-Anmeldung. Der Server hat zusaetzlich ein
+// 10-s-Idempotenzfenster (app._purchase_duplikat).
 async function save() {
+  if (state.saving) return;
+  state.saving = true;
+  try { await saveInner(); } finally { state.saving = false; }
+}
+
+async function saveInner() {
   const btn = document.getElementById("axx-save");
   const res = document.getElementById("axx-result");
   const cost = num(document.getElementById("axx-b-cost").value);
@@ -293,6 +358,17 @@ async function save() {
   const qty = parseInt(document.getElementById("axx-b-qty").value, 10) || 1;
   btn.disabled = true; btn.textContent = "Registriere…";
   res.innerHTML = "";
+  // Erst die SKU-Liste abwarten — sonst ginge {} raus und der Server legte A1-<ASIN>
+  // an, obwohl es eine Neu-FBA-SKU gibt.
+  if (state.skuLaden) await state.skuLaden;
+  const skuSel = document.getElementById("axx-b-sku");
+  if (skuSel && skuSel.value === "__wahl__") {
+    btn.disabled = false; btn.textContent = "Einkauf registrieren";
+    res.innerHTML = '<div class="axx-err">Bitte wähle aus, auf welche SKU der Einkauf gehen soll.</div>';
+    showResult();
+    skuSel.focus();
+    return;
+  }
 
   // Anlegen. Das Backend stößt Listing + Prep im Hintergrund an (AUTO_LIST_PREP).
   const r = await api("/api/purchases", "POST", {
@@ -305,6 +381,7 @@ async function save() {
     quantity: qty,
     sell_price: num(document.getElementById("axx-b-sell").value),
     order_number: (document.getElementById("axx-b-order").value || "").trim(),
+    ...skuWahl(),
     markup: state.markup
   });
 
@@ -331,9 +408,11 @@ async function save() {
     ? "Amazon-Listing ist in den Einstellungen aus"
     : "Listing läuft";
   res.innerHTML = '<div class="axx-res ok">Einkauf registriert · ' + qty + " × " + eur(cost) +
+    (r.data && r.data.sku ? " · SKU " + esc(r.data.sku) : "") +
     "<small>" + listTxt + prepTxt + ". Status siehst du in Arbitragex → Einkäufe.</small></div>" +
     (listing && listing.listing ? renderListing(listing.listing) : "");
   document.getElementById("axx-b-cost").value = "";
+  skuNachSave(r.data && r.data.sku);
   showResult();
 }
 
@@ -354,4 +433,19 @@ function renderListing(rows) {
     return '<div class="axx-res ' + cls + '">' + (FLAG[x.marketplace] || "") + " " +
       String(x.marketplace || "").toUpperCase() + " · " + txt + "</div>";
   }).join("");
+}
+
+/* Nach dem Registrieren steht die benutzte SKU in der Auswahl -- eine eben neu
+   angelegte inklusive. Sonst legte der naechste Einkauf derselben Ware gleich
+   noch eine SKU an. */
+function skuNachSave(sku) {
+  const sel = document.getElementById("axx-b-sku");
+  if (!sel || !sku) return;
+  if (![...sel.options].some((o) => o.value === sku)) {
+    const o = document.createElement("option");
+    o.value = sku; o.textContent = sku + " · eben angelegt";
+    sel.insertBefore(o, sel.firstChild);
+  }
+  sel.value = sku;
+  sel.dispatchEvent(new Event("change"));
 }

@@ -1,5 +1,20 @@
 # Arbitragex — Chrome-Extension
 
+**Neu in 1.8.6** — Die SKU-Wahl wartet beim schnellen Enter im EK-Feld auf die
+SKU-Liste (vorher konnte der Einkauf ohne Auswahl rausgehen), warnt bei einer FBM-SKU
+und verlangt eine bewusste Wahl, wenn Amazon den Zustand einer SKU nicht liefert.
+
+**Neu in 1.8.5** — SKU-Wahl beim „Einkauf registrieren": Hast du zu einer ASIN
+mehrere SKUs (Neu FBA, Gebraucht, alte FBM), waehlst du im Popup aus, auf welche der
+Einkauf geht — Anzeige mit SKU, Zustand, FBA/FBM, Preis und Bestand. Vorausgewaehlt
+ist Neu + FBA; „Neue SKU anlegen" legt eine eigene SKU mit gewaehltem Zustand an.
+
+**Neu in 1.8.4** — "Einkauf registrieren" legt bei doppeltem Enter oder
+Doppelklick nur noch einen Einkauf an (der Server haelt zusaetzlich ein
+10-Sekunden-Fenster). Die EAN aus dem Amazon-Katalog wird nur noch als gueltige
+Ziffernfolge mit Pruefziffer uebernommen. Auf Amazon laeuft kein
+Hintergrund-Scan alle 1,2 s mehr. Kleineres Icon.
+
 **Neu in 1.8.0** — die Kalkulation sitzt jetzt im **Popup oben rechts** (Klick
 aufs Extension-Icon), nicht mehr in einem eingeblendeten Panel auf der
 Produktseite. Der bodenhohe Drawer verdeckte die halbe PDP und ging nur ueber
