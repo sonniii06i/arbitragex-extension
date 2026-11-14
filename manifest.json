@@ -1,16 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "Arbitragex",
-  "version": "1.8.6",
-  "description": "Arbitrage-Kalkulation, Einkauf erfassen, Listing anlegen & Sendung an Prep ankuendigen – im Popup oben rechts (Klick aufs Icon). EAN-Erkennung zusaetzlich auf allen anderen Shop-Seiten.",
+  "name": "Arbitragex – Profit-Rechner für Amazon-Verkäufer (FBA & FBM)",
+  "version": "1.9.27",
+  "description": "Kostenloser Profit-Rechner für Amazon-Verkäufer: Gewinn, ROI und Max-EK mit Amazons Gebühren direkt auf der Produktseite.",
   "permissions": [
     "storage",
     "clipboardWrite",
-    "activeTab"
+    "activeTab",
+    "scripting",
+    "alarms",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://arbitragex.de/*",
-    "https://arbitrage.anwaltx.de/*",
     "https://www.amazon.de/*",
     "https://www.amazon.fr/*",
     "https://www.amazon.it/*",
@@ -22,7 +24,10 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "https://www.amazon.de/*",
+        "https://www.amazon.fr/*",
+        "https://www.amazon.it/*",
+        "https://www.amazon.es/*"
       ],
       "js": [
         "content.js"
@@ -31,13 +36,38 @@
         "chip.css"
       ],
       "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.amazon.de/*",
+        "https://www.amazon.fr/*",
+        "https://www.amazon.it/*",
+        "https://www.amazon.es/*"
+      ],
+      "js": [
+        "rechner.js",
+        "panel.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Arbitragex"
+    "default_title": "Arbitragex Profit-Rechner",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
   "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
     "128": "icon128.png"
-  }
+  },
+  "homepage_url": "https://arbitragex.de/amazon-profit-rechner",
+  "optional_host_permissions": [
+    "https://sellercentral.amazon.de/*",
+    "<all_urls>"
+  ]
 }

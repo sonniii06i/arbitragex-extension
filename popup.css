@@ -9,19 +9,19 @@
 html, body { margin: 0; }
 body {
   width: 380px;
-  background: #f7f8fc;
-  color: #1e2230;
+  background: #151c19;
+  color: #f0f3f0;
   font: 13.5px/1.45 -apple-system, system-ui, "Segoe UI", sans-serif;
 }
 
 .axx-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 14px; background: #14162a; color: #fff;
+  padding: 12px 14px; background: #0e1411; color: #fff;
 }
 .axx-brand b { font-size: 15px; }
-.axx-brand span { display: block; font-size: 10.5px; opacity: .6; font-family: ui-monospace, monospace; letter-spacing: .5px; }
+.axx-brand span { display: block; font-size: 10.5px; opacity: .6;  letter-spacing: .5px; }
 .axx-headlnk {
-  color: #c9cce0; text-decoration: none; font-size: 11px; font-weight: 600;
+  color: #b3beb7; text-decoration: none; font-size: 11px; font-weight: 600;
   border: 1px solid rgba(255,255,255,.18); border-radius: 7px; padding: 5px 9px;
 }
 .axx-headlnk:hover { background: rgba(255,255,255,.1); color: #fff; }
@@ -29,60 +29,60 @@ body {
 /* Der Inhalt scrollt, nicht das ganze Popup — der Kopf bleibt stehen. */
 .axx-body { padding: 12px 14px 14px; max-height: 540px; overflow-y: auto; }
 
-.axx-load { display: flex; align-items: center; gap: 10px; color: #6b7185; padding: 22px 2px; }
-.axx-spin { width: 16px; height: 16px; border: 2px solid #d7d9e6; border-top-color: #6366f1; border-radius: 50%; animation: axxspin .7s linear infinite; flex: 0 0 auto; }
+.axx-load { display: flex; align-items: center; gap: 10px; color: #98a59e; padding: 22px 2px; }
+.axx-spin { width: 16px; height: 16px; border: 2px solid #36433d; border-top-color: #46d39a; border-radius: 50%; animation: axxspin .7s linear infinite; flex: 0 0 auto; }
 @keyframes axxspin { to { transform: rotate(360deg); } }
 .axx-msg { padding: 14px 2px; }
 .axx-msg b { font-size: 14.5px; }
-.axx-msg p { color: #6b7185; margin: 6px 0 12px; }
+.axx-msg p { color: #98a59e; margin: 6px 0 12px; }
 
-.axx-prod { display: flex; gap: 10px; background: #fff; border: 1px solid #e7e9f2; border-radius: 13px; padding: 9px; }
-.axx-prod img, .axx-noimg { width: 62px; height: 62px; border-radius: 10px; border: 1px solid #eceef6; object-fit: contain; background: #fff; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.axx-prod { display: flex; gap: 10px; background: #1b2420; border: 1px solid #2c3732; border-radius: 13px; padding: 9px; }
+.axx-prod img, .axx-noimg { width: 62px; height: 62px; border-radius: 10px; border: 1px solid #2c3732; object-fit: contain; background: #1b2420; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 24px; }
 .axx-pinfo { min-width: 0; }   /* sonst sprengt ein langer Titel die Kachel */
 .axx-title { font-weight: 600; font-size: 12.5px; max-height: 36px; overflow: hidden; }
-.axx-meta { font-size: 10.5px; color: #8a90a6; margin-top: 3px; font-family: ui-monospace, monospace; }
-.axx-sold { margin-top: 5px; font-size: 11.5px; color: #16794c; font-weight: 600; }
-.axx-sold.new { color: #8a90a6; font-weight: 500; }
+.axx-meta { font-size: 10.5px; color: #98a59e; margin-top: 3px;  }
+.axx-sold { margin-top: 5px; font-size: 11.5px; color: #46d39a; font-weight: 600; }
+.axx-sold.new { color: #98a59e; font-weight: 500; }
 
-.axx-markup { display: flex; align-items: center; gap: 6px; margin: 10px 0 7px; font-size: 11.5px; color: #6b7185; flex-wrap: wrap; }
-.axx-mk { border: 1px solid #d7d9e6; background: #fff; border-radius: 8px; padding: 4px 9px; cursor: pointer; font-weight: 600; color: #4f46e5; }
-.axx-mk:hover { background: #eef0ff; }
-#axx-mkc { width: 54px; padding: 4px 6px; border: 1px solid #d7d9e6; border-radius: 8px; }
+.axx-markup { display: flex; align-items: center; gap: 6px; margin: 10px 0 7px; font-size: 11.5px; color: #98a59e; flex-wrap: wrap; }
+.axx-mk { border: 1px solid #36433d; background: #1b2420; border-radius: 8px; padding: 4px 9px; cursor: pointer; font-weight: 600; color: #46d39a; }
+.axx-mk:hover { background: #24302b; }
+#axx-mkc { width: 54px; padding: 4px 6px; border: 1px solid #36433d; border-radius: 8px; }
 
 /* Marktplaetze als Kacheln — alles ohne Ausklappen sichtbar. */
 .axx-mps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 9px; }
-.axx-mp { background: #fff; border: 1px solid #e7e9f2; border-radius: 10px; padding: 6px 4px; text-align: center; }
+.axx-mp { background: #1b2420; border: 1px solid #2c3732; border-radius: 10px; padding: 6px 4px; text-align: center; }
 .axx-mp.off { opacity: .5; }
-.axx-mplab { font-size: 9.5px; color: #8a90a6; font-weight: 600; }
-.axx-mpbb { font-size: 10.5px; color: #4a5069; margin: 2px 0 4px; white-space: nowrap; }
-.axx-mpout { padding: 4px 2px; text-align: center; font-size: 11.5px; font-weight: 700; color: #4f46e5; background: #eef0ff; border-radius: 7px; white-space: nowrap; }
-.axx-mp.off .axx-mpout { background: #f1f2f7; color: #9096ab; }
+.axx-mplab { font-size: 9.5px; color: #98a59e; font-weight: 600; }
+.axx-mpbb { font-size: 10.5px; color: #c2ccc6; margin: 2px 0 4px; white-space: nowrap; }
+.axx-mpout { padding: 4px 2px; text-align: center; font-size: 11.5px; font-weight: 700; color: #46d39a; background: #24302b; border-radius: 7px; white-space: nowrap; }
+.axx-mp.off .axx-mpout { background: #2c3732; color: #7e8b84; }
 
 .axx-buygrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 9px; }
-.axx-buygrid label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: #8a90a6; font-weight: 600; }
+.axx-buygrid label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; color: #98a59e; font-weight: 600; }
 .axx-buygrid .axx-full { grid-column: 1 / -1; }
 .axx-buygrid input {
-  width: 100%; padding: 7px 8px; border: 1px solid #d7d9e6; border-radius: 8px;
-  font-size: 13px; background: #fff; color: #111827; font-weight: 600;
+  width: 100%; padding: 7px 8px; border: 1px solid #36433d; border-radius: 8px;
+  font-size: 13px; background: #1b2420; color: #f0f3f0; font-weight: 600;
 }
-.axx-buygrid input:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
+.axx-buygrid input:focus { outline: 2px solid #46d39a; outline-offset: -1px; }
 .axx-buygrid select {
-  width: 100%; padding: 7px 8px; border: 1px solid #d7d9e6; border-radius: 8px;
-  font-size: 12px; background: #fff; color: #111827; font-weight: 600;
+  width: 100%; padding: 7px 8px; border: 1px solid #36433d; border-radius: 8px;
+  font-size: 12px; background: #1b2420; color: #f0f3f0; font-weight: 600;
 }
-.axx-buygrid select:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
-.axx-skunote { font-size: 10.5px; color: #b45309; }
+.axx-buygrid select:focus { outline: 2px solid #46d39a; outline-offset: -1px; }
+.axx-skunote { font-size: 10.5px; color: #e5b45a; }
 .axx-skunote:empty { display: none; }
 
 .axx-btn {
   display: block; width: 100%; padding: 11px; border-radius: 10px;
-  border: 1px solid #d7d9e6; background: #fff; cursor: pointer;
-  font-weight: 600; font-size: 13.5px; text-align: center; text-decoration: none; color: #1e2230;
+  border: 1px solid #36433d; background: #1b2420; cursor: pointer;
+  font-weight: 600; font-size: 13.5px; text-align: center; text-decoration: none; color: #f0f3f0;
 }
-.axx-btn.primary { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none; }
+.axx-btn.primary { background: #1f9d6b; color: #fff; border: none; }
 .axx-btn.primary:hover { filter: brightness(1.05); }
 .axx-btn:disabled { opacity: .6; cursor: default; }
-.axx-note { font-size: 10.5px; color: #8a90a6; text-align: center; margin-top: 7px; line-height: 1.5; }
+.axx-note { font-size: 10.5px; color: #98a59e; text-align: center; margin-top: 7px; line-height: 1.5; }
 
 /* Ergebnis-Bereich: steht als ERSTES im Body und klebt beim Scrollen oben fest.
    Vorher sass er unter dem Registrieren-Knopf ganz unten — die Bestaetigung war
@@ -92,34 +92,309 @@ body {
   position: sticky; top: 0; z-index: 3;
   display: flex; flex-direction: column; gap: 6px;
   margin: -12px -14px 10px; padding: 12px 14px 0;
-  background: #f7f8fc;
+  background: #151c19;
 }
 .axx-result:empty { display: none; }
 .axx-res { font-size: 11.5px; padding: 8px 10px; border-radius: 9px; font-weight: 600; }
 .axx-res small { display: block; font-weight: 500; opacity: .85; margin-top: 3px; }
-.axx-res.ok { background: #dcfce7; color: #15803d; }
-.axx-res.warn { background: #fef3c7; color: #92660c; }
-.axx-res.err { background: #fee2e2; color: #b91c1c; }
-.axx-err { background: #fee2e2; color: #b91c1c; padding: 8px 10px; border-radius: 9px; font-size: 11.5px; }
+.axx-res.ok { background: rgba(70,211,154,.14); color: #46d39a; }
+.axx-res.warn { background: rgba(229,180,90,.14); color: #e5b45a; }
+.axx-res.err { background: rgba(255,128,115,.14); color: #ff8073; }
+.axx-err { background: rgba(255,128,115,.14); color: #ff8073; padding: 8px 10px; border-radius: 9px; font-size: 11.5px; }
 
 /* Kopierbare Codes (ASIN/EAN) — auch auf Nicht-Amazon-Seiten nuetzlich. */
 .axx-codes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .axx-code {
-  border: 1px solid #d7d9e6; background: #fff; border-radius: 8px;
-  padding: 6px 9px; cursor: pointer; font: 600 11.5px ui-monospace, Menlo, monospace; color: #4a5069;
+  border: 1px solid #36433d; background: #1b2420; border-radius: 8px;
+  padding: 6px 9px; cursor: pointer; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; color: #c2ccc6;
 }
-.axx-code:hover { background: #eef0ff; }
-.axx-code.copied { background: #059669; color: #fff; border-color: #059669; }
-.axx-code b { color: #8a90a6; font-weight: 600; margin-right: 5px; }
+.axx-code:hover { background: #24302b; }
+.axx-code.copied { background: #1f9d6b; color: #fff; border-color: #1f9d6b; }
+.axx-code b { color: #98a59e; font-weight: 600; margin-right: 5px; }
 
 .axx-links { display: flex; gap: 6px; margin-bottom: 10px; }
 .axx-links a {
   flex: 1; text-align: center; padding: 7px 4px; border-radius: 8px;
-  border: 1px solid #d7d9e6; background: #fff; color: #4a5069;
+  border: 1px solid #36433d; background: #1b2420; color: #c2ccc6;
   text-decoration: none; font-size: 11px; font-weight: 700;
 }
-.axx-links a:hover { background: #eef0ff; color: #4f46e5; }
+.axx-links a:hover { background: #24302b; color: #46d39a; }
 
-.axx-status { font-size: 11px; color: #8a90a6; text-align: center; margin-top: 10px; }
-.axx-status.bad { color: #b91c1c; font-weight: 600; }
-.axx-status a { color: #4f46e5; }
+.axx-status { font-size: 11px; color: #98a59e; text-align: center; margin-top: 10px; }
+.axx-status.bad { color: #ff8073; font-weight: 600; }
+.axx-status a { color: #46d39a; }
+
+/* --- idealo-Block: gleiche Feldhoehen ---------------------------------------
+   ⚠️ Vorher sass das VK-Feld tiefer als das EK-Feld: sein Label trug einen
+   Zusatzhinweis ("leer = idealo-Kurs") und wurde dadurch zweizeilig, waehrend die
+   Nachbarlabels einzeilig blieben. Im Grid schiebt ein hoeheres Label sein Input nach
+   unten -- die Zeile wirkt verrutscht. Loesung: Der Hinweis wandert in placeholder/title,
+   und jedes Label bekommt einen Beschriftungsblock fester Hoehe. */
+.axx-idgrid label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.axx-idlab {
+  display: block;
+  min-height: 15px;
+  line-height: 15px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #98a59e;
+  white-space: nowrap;
+}
+.axx-idgrid input {
+  height: 30px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+/* Der Direktlink in der Kopfzeile soll als Link erkennbar sein, aber nicht schreien. */
+.axx-idsub a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.axx-idsub a:hover { color: #46d39a; }
+
+/* --- Profit-Rechner (27.10.2026) --- */
+.axx-profit { margin: 4px 0 10px; }
+.axx-pf-head { font-size: 11px; color: #c2ccc6; font-weight: 600; margin-bottom: 6px; }
+.axx-pf-opts { display: flex; gap: 8px; align-items: center; font-size: 10.5px; color: #98a59e; margin-bottom: 6px; flex-wrap: wrap; }
+.axx-pf-opts label { display: flex; align-items: center; gap: 4px; }
+.axx-pf-opts input[type=text], .axx-pf-opts input:not([type]) { width: 44px; padding: 3px 5px; border: 1px solid #36433d; border-radius: 7px; }
+.axx-pf-row { background: #1b2420; border: 1px solid #2c3732; border-radius: 10px; padding: 6px 8px; margin-bottom: 5px; }
+.axx-pf-row.off { opacity: .6; font-size: 11px; }
+.axx-pf-l1 { display: flex; align-items: center; gap: 6px; font-size: 11.5px; flex-wrap: wrap; }
+.axx-pf-vk { width: 66px; padding: 3px 5px; border: 1px solid #36433d; border-radius: 7px; font-weight: 600; }
+.axx-pf-tarif { border: 1px solid #36433d; background: #24302b; color: #46d39a; border-radius: 7px; padding: 2px 7px; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.axx-pf-tarif-x { font-size: 10px; color: #7e8b84; }
+.axx-pf-l2 { font-size: 11px; color: #c2ccc6; margin-top: 4px; line-height: 1.5; }
+.axx-pf-pos { color: #46d39a; }
+.axx-pf-neg { color: #ff8073; }
+.axx-pf-ok { color: #46d39a; font-size: 10.5px; font-weight: 600; }
+.axx-pf-warn { color: #e5b45a; font-size: 10.5px; font-weight: 600; }
+.axx-pf-muted { color: #7e8b84; font-size: 10.5px; }
+.axx-pf-foot { font-size: 9.5px; color: #7e8b84; margin-top: 5px; line-height: 1.4; }
+.axx-sellers { background: #1b2420; border: 1px solid #2c3732; border-radius: 10px; padding: 5px 8px; margin-bottom: 4px; font-size: 11px; }
+.axx-sellers summary { cursor: pointer; font-weight: 600; color: #c2ccc6; }
+.axx-sl { padding: 3px 0; border-top: 1px solid #2c3732; }
+.axx-sl.ich { background: #24302b; }
+.axx-sl a { color: #46d39a; text-decoration: none;  font-size: 10.5px; }
+.axx-sl-sub { margin-top: 5px; font-size: 10px; font-weight: 700; color: #98a59e; }
+.axx-pf-ek input { width: 70px !important; font-weight: 700; }
+.axx-einst { margin-top: 12px; font-size: 11px; color: #c2ccc6; background: #1b2420; border: 1px solid #2c3732; border-radius: 10px; padding: 6px 9px; }
+.axx-einst summary { cursor: pointer; font-weight: 600; }
+.axx-einst-r { display: flex; gap: 6px; align-items: center; margin: 5px 0; }
+.axx-einst-r.sub { margin-left: 18px; }
+.axx-treffer { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+.axx-tr { display: flex; gap: 8px; align-items: center; text-align: left; background: #1b2420; border: 1px solid #2c3732; border-radius: 10px; padding: 6px; cursor: pointer; }
+.axx-tr:hover { border-color: #46d39a; background: #24302b; }
+.axx-tr img, .axx-tr .axx-noimg { width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto; border-radius: 6px; }
+.axx-tr b { display: block; font-size: 11.5px; max-height: 30px; overflow: hidden; }
+.axx-tr small { display: block; font-size: 10px; color: #98a59e;  }
+
+/* Ohne Abo: Einkaufsbereich gesperrt (geblurrt), Klick -> Abo-Seite */
+.axx-gesperrt { position: relative; margin-top: 4px; border-radius: 12px; overflow: hidden; }
+.axx-gesperrt-inhalt { filter: blur(3.5px); opacity: .55; pointer-events: none; user-select: none; }
+.axx-gesperrt-ov { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; text-align: center; padding: 14px 18px; text-decoration: none; color: #f0f3f0;
+  background: radial-gradient(ellipse at center, rgba(21,28,25,.94) 35%, rgba(21,28,25,.6) 100%); }
+.axx-gesperrt-ov b { font-size: 14px; }
+.axx-gesperrt-ov small { font-size: 11.5px; color: #c2ccc6; max-width: 270px; line-height: 1.45; }
+.axx-gesperrt-ov .axx-btn { margin-top: 4px; padding: 8px 18px; }
+.axx-schloss { font-size: 22px; }
+
+/* --- Profit-Rechner im Popup (Neuaufbau 27.10.2026: breiter, Luft, wie das Panel) --- */
+body { width: 460px; }
+.axx-body { padding: 14px 16px 16px; max-height: 560px; }
+.axx-profit { margin: 12px 0 14px; display: flex; flex-direction: column; gap: 10px; }
+.pp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; font-size: 12px; color: #c2ccc6; }
+.pp-head b { color: #f0f3f0; }
+.pp-dot { margin: 0 7px; color: #4a5952; }
+.pp-box { background: none; border: 1px solid #36433d; border-radius: 14px; padding: 10px 12px 12px; }
+.pp-titel { font: 800 10.5px system-ui; color: #46d39a;  margin-bottom: 7px; }
+.pp-g3 { display: grid; grid-template-columns: 1.15fr 1.15fr .7fr; gap: 8px; }
+.pp-g3 label, .pp-opt label { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: #98a59e; font-weight: 600; }
+.pp-g3 input { font: 700 15px system-ui; padding: 8px 10px; border: 1px solid #36433d; border-radius: 9px; background: #1b2420; color: #f0f3f0; width: 100%; box-sizing: border-box; }
+.pp-g3 input:focus, .pp-opt input:focus { outline: 2px solid #46d39a; outline-offset: -1px; }
+.pp-opt { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 9px; }
+.pp-opt label { flex-direction: row; align-items: center; gap: 5px; }
+.pp-opt input:not([type]) { width: 52px; font: 600 13px system-ui; padding: 5px 7px; border: 1px solid #36433d; border-radius: 8px; }
+.pp-cb input { margin: 0; }
+.pp-seg { display: inline-flex; border: 1px solid #36433d; border-radius: 8px; overflow: hidden; }
+.pp-seg button { border: 0; background: #1b2420; color: #46d39a; padding: 5px 11px; font: 700 11.5px system-ui; cursor: pointer; }
+.pp-seg button.an { background: #3a4741; color: #fff; }
+.pp-hinweis { font-size: 11px; color: #e5b45a; margin-top: 7px; line-height: 1.45; }
+.pp-hinweis:empty { display: none; }
+.pp-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pp-t { background: #1b2420; border: 1px solid #2c3732; border-radius: 12px; padding: 8px 10px; text-align: center; }
+.pp-t i { display: block; font-style: normal; font-size: 10.5px; color: #98a59e; font-weight: 600; margin-bottom: 2px; }
+.pp-t b { font-size: 15px; }
+.pp-t.gross b { font-size: 21px; letter-spacing: -.01em; }
+.pp-t.voll { grid-column: 1 / -1; }
+.pp-leer { grid-column: 1 / -1; background: rgba(229,180,90,.12); border: 1px solid rgba(229,180,90,.3); color: #e5b45a; border-radius: 12px; padding: 10px 12px; font-size: 12px; line-height: 1.45; }
+.pp-tab { width: 100%; border-collapse: collapse; background: #1b2420; border: 1px solid #2c3732; border-radius: 12px; overflow: hidden; font-size: 12.5px; }
+.pp-tab th { font-size: 10.5px; color: #98a59e; font-weight: 600; text-align: left; padding: 7px 10px; background: #1a2320; }
+.pp-tab td { padding: 8px 10px; border-top: 1px solid #2c3732; cursor: pointer; white-space: nowrap; }
+.pp-tab tr.an td { background: #24302b; }
+.pp-tab tr.an td:first-child { box-shadow: inset 3px 0 0 #46d39a; }
+.pp-tab tr.aus td { cursor: default; color: #7e8b84; }
+.pp-tab .r { text-align: right; }
+.pp-chip { border: 1px solid #36433d; background: #24302b; color: #46d39a; border-radius: 7px; padding: 2px 7px; font: 700 10.5px system-ui; cursor: pointer; }
+.pp-pos { color: #46d39a; } .pp-neg { color: #ff8073; } .pp-ok { color: #46d39a; } .pp-warn { color: #e5b45a; } .pp-mut { color: #7e8b84; }
+.axx-sellers { padding: 8px 10px; border-radius: 12px; font-size: 12px; }
+.axx-sellers summary { font-size: 12px; }
+.axx-sl { padding: 5px 0; }
+
+
+/* --- Dunkle Gestaltung wie das Panel auf der Produktseite (10.11.2026, Betreiber: Popup „noch alte Version“) ---
+   Die Farbwerte oben sind umgestellt; hier stehen die Stellen, die eine eigene Regel brauchen. */
+body { background: #151c19; color: #f0f3f0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+       font-variant-numeric: tabular-nums; color-scheme: dark; }
+.axx-head { border-bottom: 1px solid #2c3732; }
+.axx-brand span { opacity: 1; color: #98a59e; letter-spacing: .02em; }
+.axx-body { scrollbar-width: thin; scrollbar-color: #3a4741 transparent; }
+input, select, #axx-mkc { background: #0e1411 !important; color: #f0f3f0 !important; border-color: #36433d !important; }
+input::placeholder { color: #66736c; }
+input:focus, select:focus { outline-color: #46d39a !important; }
+input[type=checkbox], input[type=radio] { accent-color: #1f9d6b; }
+a { color: #46d39a; }
+.axx-btn.primary { color: #fff; }
+.axx-btn.primary:hover { filter: none; background: #24b079; }
+.axx-prod img, .axx-noimg, .axx-tr img { background: #fff; border: 0; }
+.axx-prod, .pp-t, .pp-tab, .axx-sellers, .axx-einst, .axx-pf-row, .axx-mp, .axx-tr { background: #1b2420; border-color: #2c3732; }
+.pp-box { border: 0; padding: 0; border-radius: 0; }
+.pp-titel { display: none; }
+.pp-seg { border: 0; background: #1f2824; border-radius: 8px; padding: 2px; }
+.pp-seg button { background: transparent; color: #98a59e; border-radius: 6px; }
+.pp-seg button.an { background: #3a4741; color: #f0f3f0; }
+.pp-t { text-align: left; padding: 9px 12px; }
+.pp-t i { font-weight: 400; }
+.pp-t.gross b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.pp-tab th { background: #1a2320; font-weight: 400; }
+.pp-tab tr.an td { background: #24302b; }
+.pp-tab tr.an td:first-child { box-shadow: inset 3px 0 0 #1f9d6b; }
+.pp-chip, .axx-pf-tarif, .axx-mk, .axx-code, .axx-links a { background: #1b2420; border-color: #36433d; color: #f0f3f0; }
+.axx-code b { color: #98a59e; }
+.axx-code:hover, .axx-links a:hover, .axx-mk:hover, .axx-tr:hover { background: #24302b; color: #f0f3f0; border-color: #4a5952; }
+.axx-mpout { background: #24302b; color: #46d39a; }
+.axx-result { background: #151c19; }
+.axx-sl a { font-family: inherit; }
+.axx-gesperrt-ov { color: #f0f3f0; }
+
+
+/* --- Aufbau wie das Panel (11.11.2026, Betreiber: „genau gleich“, Einkauf ohne Scrollen) --- */
+body { width: 400px; font-size: 12.5px; }
+.axx-head { padding: 9px 14px; }
+.axx-brand b { font-size: 14px; }
+.axx-body { padding: 12px 14px 14px; max-height: 548px; }
+.axx-prod { background: none; border: 0; padding: 0; gap: 12px; align-items: flex-start; }
+.axx-prod img, .axx-noimg { width: 68px; height: 68px; border-radius: 10px; padding: 4px; }
+.axx-title { font-size: 13px; font-weight: 600; line-height: 1.3; max-height: 34px; }
+.axx-codes { margin: 5px 0 3px; gap: 4px; }
+.axx-code { background: #1f2824; border: 0; border-radius: 6px; padding: 3px 6px; font-size: 11px; font-weight: 600; letter-spacing: .01em; cursor: copy; }
+.axx-code.ean { color: #98a59e; font-weight: 500; }
+.axx-meta { font-size: 11px; margin-top: 0; }
+.axx-sold { margin: 0; font-size: 11px; font-weight: 400; display: inline; }
+.axx-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 10px 0 0; border: 1px solid #2c3732; border-radius: 9px; overflow: hidden; }
+.axx-links a { border: 0; border-radius: 0; background: none; padding: 7px 0; font-size: 12px; font-weight: 600; color: #f0f3f0; }
+.axx-links a + a { border-left: 1px solid #2c3732; }
+.axx-links a:hover { background: #1f2824; border-color: #2c3732; }
+.axx-profit { margin: 0; gap: 0; }
+.pp-reiterzeile { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #2c3732; margin: 6px 0 9px; }
+.pp-reiter { border: 0; background: none; padding: 7px 0 8px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; color: #98a59e;
+             border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.pp-reiter:hover { color: #f0f3f0; }
+.pp-reiter.an { color: #f0f3f0; border-bottom-color: #f0f3f0; }
+.pp-reiter.aus { opacity: .4; cursor: default; }
+.pp-g3 { gap: 8px; }
+.pp-g3 label, .pp-opt label, .axx-buygrid label { font-size: 10.5px; font-weight: 400; color: #98a59e; }
+.pp-g3 input { font-size: 14px; font-weight: 600; padding: 6px 9px; border-radius: 8px; }
+.pp-opt { margin-top: 7px; gap: 6px 10px; align-items: center; font-size: 11.5px; }
+.pp-opt label { font-size: 11.5px; }
+.pp-opt input:not([type]) { width: 50px; font-size: 12px; padding: 4px 6px; border-radius: 8px; }
+.pp-seg button { padding: 3px 10px; font-size: 11.5px; font-weight: 600; }
+.pp-tiles { background: #1f2824; border-radius: 10px; padding: 9px 12px; gap: 0 14px; margin: 8px 0; }
+.pp-t { background: none; border: 0; padding: 0; border-radius: 0; }
+.pp-t i { font-size: 10.5px; margin-bottom: 0; }
+.pp-t b { font-size: 13px; font-weight: 600; }
+.pp-t.gross { padding-bottom: 6px; }
+.pp-t.gross b { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.pp-t.gross:first-child b { font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+.pp-leer { background: none; border: 0; padding: 2px 0; color: #98a59e; }
+.axx-buygrid { grid-template-columns: 1.6fr 1fr; gap: 7px 8px; margin-bottom: 8px; }
+.axx-buygrid.mit-profit .axx-dup { display: none; }
+.axx-buygrid input, .axx-buygrid select { padding: 6px 9px; font-size: 12px; font-weight: 400; border-radius: 8px; }
+.axx-buygrid select { font-weight: 600; }
+.axx-skunote { font-size: 11px; }
+.axx-btn { padding: 10px; font-size: 13px; border-radius: 9px; }
+#axx-profit2 { margin-top: 12px; gap: 10px; display: flex; flex-direction: column; }
+.pp-head { font-size: 11.5px; }
+.axx-mehr, .axx-einst, .axx-sellers { background: none; border: 0; border-top: 1px solid #2c3732; border-radius: 0; padding: 9px 0 2px; margin-top: 10px; font-size: 12px; }
+.axx-mehr summary, .axx-einst summary, .axx-sellers summary { cursor: pointer; font-weight: 600; font-size: 13px; color: #f0f3f0; }
+.axx-mehr .axx-markup { margin: 8px 0 7px; }
+.pp-tab { font-size: 12px; border: 0; border-radius: 0; background: none; }
+.pp-tab th { background: none; padding: 4px 6px; }
+.pp-tab td { padding: 6px; border-top-color: #2c3732; }
+.axx-result { margin: -12px -14px 8px; padding: 12px 14px 0; }
+
+/* Platz sparen, damit „Einkauf registrieren“ in 600 px Popup-Höhe ohne Scrollen sichtbar ist */
+.axx-head { padding: 6px 14px; }
+.axx-brand { display: flex; align-items: baseline; gap: 8px; }
+.axx-brand b { font-size: 13px; }
+.axx-brand span { display: inline; font-size: 11px; }
+.axx-headlnk { padding: 3px 8px; }
+.axx-body { padding-top: 10px; max-height: 566px; }
+.axx-prod img, .axx-noimg { width: 62px; height: 62px; }
+.axx-links { margin-top: 8px; }
+.axx-links a { padding: 6px 0; }
+.pp-reiterzeile { margin: 4px 0 8px; }
+.pp-reiter { padding: 6px 0 7px; }
+.pp-opt { flex-wrap: wrap; gap: 6px 8px; white-space: nowrap; }
+.pp-opt input:not([type]) { width: 42px; }
+.pp-opt label { gap: 4px; }
+.pp-tiles { margin: 7px 0; padding: 8px 12px; }
+.axx-buygrid .axx-sku { grid-column: 1 / -1; }
+.axx-buygrid:has(#axx-b-condbox:not([style*="none"])) .axx-sku { grid-column: auto; }
+.axx-skunote { grid-column: 1 / -1; line-height: 1.3; }
+.axx-buygrid { gap: 6px 8px; }
+
+.axx-headr { display: flex; gap: 6px; align-items: center; }
+button.axx-headlnk { background: none; cursor: pointer; font: inherit; font-size: 13px; line-height: 1; padding: 3px 7px; }
+.axx-einst-r { font-size: 12px; margin: 6px 0; gap: 7px; }
+.axx-einst-r input:not([type=checkbox]):not([type=radio]) { margin-left: auto; padding: 4px 7px; border: 1px solid #36433d; border-radius: 8px; }
+
+/* --- Kennzahlen über den Eingaben, Kopfzeile entfällt bei Produktansicht (11.11.2026) --- */
+body.mit-produkt .axx-head { display: none; }
+body.mit-produkt .axx-body { max-height: 600px; padding-top: 12px; }
+.axx-prod { position: relative; }
+.axx-pinfo { flex: 1; padding-right: 44px; }
+.axx-kbtn { position: absolute; top: -4px; right: -4px; display: flex; }
+.axx-kbtn button, .axx-kbtn a { background: none; border: 0; color: #98a59e; width: 24px; height: 26px; border-radius: 7px; cursor: pointer; font-size: 14px;
+  line-height: 26px; text-align: center; text-decoration: none; padding: 0; font-family: inherit; }
+.axx-kbtn button:hover, .axx-kbtn a:hover { background: #1f2824; color: #f0f3f0; }
+.axx-title { max-height: 34px; }
+.fakten { display: grid; grid-template-columns: 1fr 1fr 1.25fr; border: 1px solid #2c3732; border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+.fk { padding: 4px 9px 5px; min-width: 0; box-shadow: 1px 0 0 #2c3732, 0 1px 0 #2c3732; }
+.fk i { display: block; font-style: normal; font-size: 10px; color: #98a59e; line-height: 1.3; }
+.fk b { display: block; font-size: 13px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fk small { display: block; font-size: 10px; color: #98a59e; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fk small a { color: #98a59e; }
+.fk .pos { color: #46d39a; } .fk .neg { color: #ff8073; } .fk .mut { color: #7e8b84; font-size: 12px; }
+.axx-meta { display: none; }
+.pp-reiterzeile { margin: 2px 0 7px; }
+.pp-tiles { margin: 6px 0; padding: 7px 12px; }
+.pp-t.gross { padding-bottom: 4px; }
+.pp-t.gross:first-child b { font-size: 22px; }
+.axx-links { margin-top: 7px; }
+.axx-buygrid { margin-bottom: 7px; }
+
+body.mit-produkt .axx-body { padding-top: 10px; }
+.axx-codes { flex-wrap: nowrap; }
+.axx-code { font-size: 10.5px; padding: 3px 5px; white-space: nowrap; }
+.pp-tiles { padding: 6px 12px; margin: 6px 0; }
+.pp-t.gross { padding-bottom: 2px; }
+.axx-skunote:empty { display: none; }
+.pp-opt { gap: 5px 8px; }
+
+.lz { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+.ustk { border: 0; background: #2a3530; color: #f0f3f0; border-radius: 5px; padding: 0 5px; font: inherit; font-size: 10px; font-weight: 600; line-height: 14px; cursor: pointer; }
+.ustk:hover { background: #3a4741; }
+.ustg { display: inline-flex; gap: 3px; }
+.ustk.fest { cursor: default; }
+.ustk.fest:hover { background: #2a3530; }
+.ustk.warn { box-shadow: inset 0 0 0 1px #d9a441; }

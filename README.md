@@ -1,5 +1,20 @@
 # Arbitragex — Chrome-Extension
 
+**Stand 1.9.27** (14.11.2026) — seit 1.8.6 dazugekommen:
+
+* **Profit-Rechner mit Amazons Gebühren:** Gewinn, ROI, Marge und Max-EK für DE/FR/IT/ES, im Popup und als
+  Panel auf der Produktseite (`panel.js`, `rechner.js`); auch auf Shop-Seiten per EAN und per Rechtsklick.
+* **Verlauf und Sales:** Preis-, Angebots- und BSR-Verlauf, Bestandsdrops je Verkäufer und seit 1.9.27 eine
+  vorsichtige Sales-Schätzung je Listing (Rang-Sprünge, Bestandsdrops, eigene Sales, Bewertungen der letzten
+  45 Tage, auf Amazon.de der Rang in der Kategorie).
+* **Optional, nur nach Einschalten im Arbitragex-Konto:** Bestand eigener ASINs im Hintergrund nachmessen
+  (seit 1.9.24) und der Automat für Freischaltungen und Auszahlungen über die eigene Seller-Central-Sitzung
+  (seit 1.9.13, `automat.js`).
+* **Installation** am einfachsten über den Chrome Web Store:
+  https://chromewebstore.google.com/detail/blakndfcimflccddmlhfpnllmkahjnhh
+
+Die Abschnitte unten beschreiben teils ältere Stände (1.8.x und früher).
+
 **Neu in 1.8.6** — Die SKU-Wahl wartet beim schnellen Enter im EK-Feld auf die
 SKU-Liste (vorher konnte der Einkauf ohne Auswahl rausgehen), warnt bei einer FBM-SKU
 und verlangt eine bewusste Wahl, wenn Amazon den Zustand einer SKU nicht liefert.

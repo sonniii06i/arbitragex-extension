@@ -16,6 +16,22 @@
  */
 (function () {
   "use strict";
+  // Wird ggf. zweimal geladen (dauerhaft registriert UND per Klick über activeTab injiziert)
+  if (window.__axxContentGeladen) return;
+  window.__axxContentGeladen = true;
+  // 1.9.18: Ziel des letzten Rechtsklicks merken – das Rechtsklick-Menü liest daraus ASIN/Titel, auch ohne Markierung
+  document.addEventListener("contextmenu", (e) => {
+    try {
+      const el = e.target && e.target.nodeType === 1 ? e.target : (e.target && e.target.parentElement);
+      if (!el) return;
+      const mit = el.closest("[data-asin]");
+      const a = el.closest("a[href]");
+      window.__axxRk = { t: Date.now(),
+        asin: mit && /^[A-Z0-9]{10}$/.test(mit.getAttribute("data-asin") || "") ? mit.getAttribute("data-asin") : "",
+        href: a ? a.href : "",
+        text: String(el.innerText || el.getAttribute("alt") || el.getAttribute("title") || "").replace(/\s+/g, " ").trim().slice(0, 300) };
+    } catch (x) { }
+  }, true);
 
   /* Ab v1.6 laeuft das Script auf allen Seiten statt nur auf Amazon.
      Auf Amazon gibt es ASIN, Kalkulation und Einkauf; ueberall sonst
@@ -74,7 +90,7 @@
       if (state.asin && state.asin !== asin) return;  // Produkt inzwischen gewechselt
       state.catalogEan = katalogEan(r.data.ean);
       const chip = document.getElementById(CHIP_ID);
-      if (chip && !chip.querySelector(".axx-cp.ean")) buildChip();
+      if (chip && !chipFeld(chip, ".axx-cp.ean")) buildChip();
     }).catch(() => { /* still bleiben: der Chip funktioniert auch ohne */ });
   }
 
@@ -91,7 +107,7 @@
       if (r.data && katalogEan(r.data.ean)) {
         state.catalogEan = katalogEan(r.data.ean);
         const chip = document.getElementById(CHIP_ID);
-        if (chip && !chip.querySelector(".axx-cp.ean")) buildChip();
+        if (chip && !chipFeld(chip, ".axx-cp.ean")) buildChip();
       }
       return { step: "ok", data: r.data };
     })();
@@ -227,6 +243,34 @@
      ====================================================================== */
   const CHIP_ID = "axx-launch";
 
+  /* 14.11.2026 (1.9.25): Der Chip-Inhalt sitzt im Shadow-DOM, wie das Panel. Vorher lagen die Knöpfe offen im
+     Seiten-DOM und Shop-Stile (button { min-width; border-radius; font-size … }) griffen durch: AX wurde zur
+     145 px breiten Pille, der Chip doppelt so hoch. Alle Maße in px, nichts erbt von der Seite. Der Wirt
+     (#axx-launch) bleibt im Seiten-DOM — Position, Ziehen und das Ausblenden durch panel.js hängen an ihm. */
+  const CHIP_CSS =
+    ":host{all:initial;position:fixed;right:22px;bottom:22px;z-index:2147483646;display:block}" +
+    ".chip{all:initial;display:flex;align-items:stretch;background:#151c19;border:1px solid #0b100e;border-radius:11px;" +
+      "box-shadow:0 12px 28px -10px rgba(8,12,10,.6),0 1px 4px rgba(8,12,10,.3);" +
+      'font:600 12.5px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;' +
+      "font-variant-numeric:tabular-nums;color:#f0f3f0;overflow:hidden;user-select:none;-webkit-user-select:none}" +
+    ":host(.dragging) .chip{opacity:.9;box-shadow:0 16px 34px -10px rgba(8,12,10,.7)}" +
+    "button{appearance:none;-webkit-appearance:none;border:none;border-radius:0;margin:0;min-width:0;background:transparent;" +
+      "color:#f0f3f0;padding:0 11px;height:36px;cursor:copy;font:inherit;letter-spacing:.02em;text-transform:none;white-space:nowrap}" +
+    ".axx-chip-ax{background:#1f9d6b;color:#fff;font-weight:700;letter-spacing:.04em;padding:0 12px;cursor:pointer}" +
+    ".axx-chip-ax:hover{background:#24b079}" +
+    ".axx-cp:hover{background:#1f2824}" +
+    ".axx-cp.ean{color:#98a59e;font-weight:500;padding-left:2px}" +
+    ".axx-cp.copied{background:#1f9d6b!important;color:#fff}" +
+    ".axx-grip{display:flex;align-items:center;padding:0 9px;color:#5d6a63;cursor:grab;font-size:13px;border-left:1px solid #2c3732}" +
+    ".axx-grip:active{cursor:grabbing}" +
+    ".axx-lnk{display:flex;align-items:center;padding:0 11px;color:#98a59e;text-decoration:none;font-size:12.5px;font-weight:500;" +
+      "border-left:1px solid #2c3732}" +
+    ".axx-lnk:hover{background:#1f2824;color:#f0f3f0}";
+  // Elemente des Chips liegen im Shadow-DOM; chip.querySelector fände sie von außen nicht.
+  function chipFeld(chip, sel) {
+    return chip ? (chip.shadowRoot || chip).querySelector(sel) : null;
+  }
+
   function pageAsin() {
     const m = location.pathname.match(/\/(?:dp|gp\/product|gp\/aw\/d|gp\/offer-listing)\/([A-Z0-9]{10})/);
     if (m) return { asin: m[1], sure: true };
@@ -343,22 +387,23 @@
         "https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q=" + encodeURIComponent(q) + '">idealo</a>';
       if (info.asin) {
         html += '<a class="axx-lnk amazon" target="_blank" rel="noopener" title="Auf Amazon öffnen" href="' +
-          "https://www.amazon.de/dp/" + info.asin + '">amazon</a>';
+          "https://www.amazon.de/dp/" + info.asin + '">Amazon</a>';
       } else {
         html += '<a class="axx-lnk amazon" target="_blank" rel="noopener" title="Auf Amazon suchen" href="' +
-          "https://www.amazon.de/s?k=" + encodeURIComponent(q) + '">amazon</a>';
+          "https://www.amazon.de/s?k=" + encodeURIComponent(q) + '">Amazon</a>';
       }
       html += '<a class="axx-lnk goog" target="_blank" rel="noopener" title="Bei Google suchen" href="' +
-        "https://www.google.com/search?q=" + encodeURIComponent(q) + '">google</a>';
+        "https://www.google.com/search?q=" + encodeURIComponent(q) + '">Google</a>';
     }
     html += '<span class="axx-grip" title="Verschieben">⠿</span>';
-    chip.innerHTML = html;
+    const innen = chip.attachShadow({ mode: "open" });
+    innen.innerHTML = "<style>" + CHIP_CSS + '</style><div class="chip">' + html + "</div>";
     document.body.appendChild(chip);
 
     const pos = await savedPos();
     if (pos) { chip.style.left = pos.x + "px"; chip.style.top = pos.y + "px"; chip.style.right = "auto"; chip.style.bottom = "auto"; }
 
-    chip.querySelector(".axx-chip-ax").addEventListener("click", (e) => {
+    innen.querySelector(".axx-chip-ax").addEventListener("click", (e) => {
       e.stopPropagation();
       if (IS_AMAZON) {
         chrome.runtime.sendMessage({ type: "axx-open-popup" }, (r) => {
@@ -371,14 +416,24 @@
         });
         return;
       }
+      // 1.9.20 (Betreiber: „wenn man auf das AX klickt, soll die Extension aufpoppen“): auf Shop-Seiten klappt das
+      // Profit-Panel auf DIESER Seite auf und sucht das Amazon-Listing (EAN, sonst Titel). Erst wenn das nicht geht
+      // (Seite gesperrt, alte Chrome-Version): Popup, zuletzt die Weboberfläche.
       const target = "https://arbitragex.de/" + (ean ? "?ean=" + encodeURIComponent(ean) : "");
-      window.open(target, "_blank", "noopener");
+      const h1 = document.querySelector("h1"), og = document.querySelector('meta[property="og:title"]');
+      const titel = String((h1 && h1.innerText) || (og && og.content) || document.title || "").replace(/\s+/g, " ").trim().slice(0, 200);
+      chrome.runtime.sendMessage({ type: "axx-panel-hier", ean: ean || "", titel }, (r) => {
+        if (!chrome.runtime.lastError && r && r.ok) return;
+        chrome.runtime.sendMessage({ type: "axx-open-popup" }, (r2) => {
+          if (chrome.runtime.lastError || !r2 || !r2.ok) window.open(target, "_blank", "noopener");
+        });
+      });
     });
-    chip.querySelectorAll(".axx-cp").forEach((b) => b.addEventListener("click", (e) => {
+    innen.querySelectorAll(".axx-cp").forEach((b) => b.addEventListener("click", (e) => {
       e.stopPropagation(); e.preventDefault();
       copyText(b.getAttribute("data-copy").replace(/\\n/g, "\n"), b);
     }));
-    makeDraggable(chip, chip.querySelector(".axx-grip"));
+    makeDraggable(chip, innen.querySelector(".axx-grip"));
   }
 
   /* Ziehen am Griff. Bewusst NICHT der ganze Chip als Ziehfläche: sonst müsste
@@ -420,6 +475,70 @@
      sofort (ASIN, EAN, Adresse), "analyze" wartet auf das Vorabladen und
      liefert damit meist ohne spuerbare Verzoegerung.
      ====================================================================== */
+  /* Shop-Preis als EK-Vorschlag. Shops wie MediaMarkt liefern ALLE Varianten in einer
+     Produktgruppe (je eigene EAN und eigener Preis) – deshalb nur der Preis der Variante,
+     deren EAN zur Seite passt. Bei mehreren Preisen ohne passende EAN: nicht raten (null). */
+  function shopPreis() {
+    try {
+      const zahl = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) && n > 0 ? n : null; };
+      const ean = besteEan();
+      const gtins = (o) => ["gtin13", "gtin", "gtin12", "gtin14", "gtin8", "ean"].map((k) => String(o[k] || "").replace(/\D/g, "")).filter(Boolean);
+      // Angebote mit Link auf eine ANDERE Seite (Varianten, MediaMarkt-Eigenangebot neben dem
+      // Marktplatz-Angebot) zählen nie: 27.10. iPhone-Seite 1.726,92 € (Jacob Elektronik), die
+      // vier Farbvarianten daneben 1.599 € -> vorher 1.599 gelesen.
+      const pfad = (u) => { try { return new URL(u, location.href).pathname.replace(/\/+$/, ""); } catch (e) { return null; } };
+      const hier = location.pathname.replace(/\/+$/, "");
+      const angebote = (o) => [].concat(o.offers || []).filter((x) => x && typeof x === "object")
+        .flatMap((x) => [].concat(x["@type"] === "AggregateOffer" && x.offers ? x.offers : x));
+      const preisVon = (x) => zahl(x.price != null ? x.price : x.lowPrice);
+      let gtinTreffer = null, seitenTreffer = null;
+      const gruppe = [], einzeln = [];
+      for (const s of document.querySelectorAll('script[type="application/ld+json"]')) {
+        let j; try { j = JSON.parse(s.textContent); } catch (e) { continue; }
+        const stapel = [j];
+        while (stapel.length) {
+          const o = stapel.pop();
+          if (!o || typeof o !== "object") continue;
+          if (Array.isArray(o)) { stapel.push(...o); continue; }
+          const typ = [].concat(o["@type"] || []).join(" ");
+          if (/Product/.test(typ)) {
+            for (const x of angebote(o)) {
+              const p = preisVon(x);
+              if (!p) continue;
+              const ziel = x.url ? pfad(x.url) : null;
+              if (ziel && ziel === hier) { if (seitenTreffer == null) seitenTreffer = p; continue; }
+              if (ziel) continue;                                   // Angebot einer anderen Seite
+              if (ean && !/ProductGroup/.test(typ) && gtins(o).some((g) => g.replace(/^0+/, "") === ean.replace(/^0+/, ""))) { if (gtinTreffer == null) gtinTreffer = p; }
+              else (/ProductGroup/.test(typ) ? gruppe : einzeln).push(p);
+            }
+          }
+          Object.entries(o).forEach(([k, x]) => { if (k !== "offers" && x && typeof x === "object") stapel.push(x); });
+        }
+      }
+      if (seitenTreffer != null) return seitenTreffer;          // Angebot genau dieser Seite
+      if (gtinTreffer != null) return gtinTreffer;              // Variante mit passender EAN
+      const g = [...new Set(gruppe)];
+      if (g.length === 1) return g[0];                          // Angebot der Produktgruppe = diese Seite
+      if (g.length > 1) return null;
+      const verschieden = [...new Set(einzeln)];
+      if (verschieden.length === 1) return verschieden[0];
+      if (verschieden.length > 1) return null;                 // mehrere Varianten, keine passt -> nicht raten
+      const metas = [...document.querySelectorAll('meta[itemprop="price"], meta[property="product:price:amount"], meta[property="og:price:amount"]')]
+        .map((m) => zahl(m.getAttribute("content"))).filter(Boolean);
+      const mv = [...new Set(metas)];
+      return mv.length === 1 ? mv[0] : null;
+    } catch (e) { }
+    return null;
+  }
+
+  function kaufAbzeichen() {
+    try {
+      const el = document.querySelector("#social-proofing-faceout-title-tk_bought");
+      const t = el ? el.textContent.replace(/\s+/g, " ").trim() : "";
+      return t ? t.slice(0, 80) : null;
+    } catch (e) { return null; }
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg || !msg.type) return;
 
@@ -430,7 +549,12 @@
         asin: IS_AMAZON ? (getAsin() || info.asin) : info.asin,
         ean: besteEan(),
         url: location.href,
-        title: document.title
+        title: document.title,
+        // Amazons Verkaufsabzeichen („Mehr als 1.000 Mal im letzten Monat gekauft“) —
+        // steht nur auf der Seite, nicht in der SP-API.
+        gekauft: kaufAbzeichen(),
+        // Shop-Preis (JSON-LD/Meta) als EK-Vorschlag im Popup
+        preis: IS_AMAZON ? null : shopPreis()
       });
       return; // synchron beantwortet
     }
@@ -493,6 +617,8 @@
     if (document.body) { fn(); return; }
     document.addEventListener("DOMContentLoaded", fn, { once: true });
   }
+  // Für das Profit-Panel auf Shop-Produktseiten (panel.js, gleiche isolierte Welt)
+  window.__axxSeite = { amazon: IS_AMAZON, ean: () => besteEan(), preis: () => shopPreis(), produkt: () => isProductPage() };
   wennDomBereit(init);
 
   /* ==================================================================
@@ -567,8 +693,10 @@
         const chip = document.getElementById(CHIP_ID);
         if (!chip) return;
         if (!isProductPage()) { chipEntfernen(); return; }
-        const feld = chip.querySelector(".axx-cp.ean");
-        const angezeigt = feld ? feld.textContent.trim() : null;
+        const feld = chipFeld(chip, ".axx-cp.ean");
+        // 1.9.26: die EAN aus data-copy lesen, nicht den sichtbaren Text – während „kopiert ✓“ dasteht, hielt der
+        // Vergleich das für eine andere EAN und baute den Chip neu; die Rückmeldung verschwand sofort wieder.
+        const angezeigt = feld ? String(feld.getAttribute("data-copy") || "").trim() : null;
         const beste = findEans()[0] || null;
         if (beste && angezeigt && beste !== angezeigt) buildChip();
       }, 1200);
@@ -582,7 +710,7 @@
       if (++rescans > 6) { clearInterval(rescan); return; }
       if (!IS_AMAZON && !isProductPage()) return;
       const chip = document.getElementById(CHIP_ID);
-      if (chip && chip.querySelector(".axx-cp.ean")) { clearInterval(rescan); return; }
+      if (chip && chipFeld(chip, ".axx-cp.ean")) { clearInterval(rescan); return; }
       if (findEans().length) buildChip();
     }, 1000);
   });
