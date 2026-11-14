@@ -77,7 +77,7 @@ async function scKonto() {
   return { mcid: ids.mons_sel_dir_mcid, paid: glob.id, mkid: ids.mons_sel_mkid, land: reg.countryCode, label: glob.label || "" };
 }
 /* Verkäufer-ID (z. B. A1GJ0O22GPHV8H) aus dem Guthaben-Schlüssel <seller>.<marketplace>.PAYABLE.<Währung>;
-   null ohne Zahlungs-Recht – dann prüft der Lauf das Konto nur über die Arbitragex-Kontenliste. */
+   null ohne Zahlungs-Recht – dann gilt nur eine frühere Bestätigung dieses Seller-Central-Kontos (kontoBestaetigen). */
 async function scSellerId() {
   try {
     const r = await scJson("/payouts/api/balances");
@@ -325,6 +325,25 @@ async function axaStand(st) {
   try { await chrome.storage.local.set({ axxAutomat: neu }); } catch (e) { /* egal */ }
   return neu;
 }
+/* 1.9.28 (Sicherheitsprüfung 14.11.2026): Der Konto-Abgleich schließt zu. Vorher lief der Automat weiter, wenn die
+   Verkäufer-ID in Seller Central nicht lesbar war und im Arbitragex-Konto genau ein Amazon-Konto hing – wer im Browser
+   in einem ANDEREN Seller Central angemeldet war, hätte dort Anträge gestellt oder Auszahlungen angefordert.
+   Jetzt läuft er nur, wenn
+     a) die gelesene Verkäufer-ID zu einem verbundenen Konto gehört, oder
+     b) die ID nicht lesbar ist (z. B. Nutzer ohne Recht „Zahlungen“), dieses Seller-Central-Konto (mcid + paid aus dem
+        Konto-Wechsler) aber in einem früheren Lauf mit gelesener ID bestätigt wurde (sc_bindung vom Server).
+   Rückgabe {seller} oder {stopp: Text}. */
+function kontoBestaetigen(sellerId, konto, konten, bindungen) {
+  const bekannt = (id) => !!id && (konten || []).some((k) => k && k.seller_id === id);
+  if (sellerId) {
+    return bekannt(sellerId) ? { seller: sellerId }
+      : { stopp: "Seller Central zeigt ein anderes Konto (" + sellerId + ") als Arbitragex" };
+  }
+  const b = (bindungen || []).find((x) => x && x.mcid && x.paid && x.mcid === konto.mcid && x.paid === konto.paid && bekannt(x.seller_id));
+  if (b) return { seller: b.seller_id };
+  return { stopp: "Seller-Central-Konto nicht bestätigt: Die Verkäufer-ID ist nicht lesbar (fehlt das Recht „Zahlungen“?). " +
+                  "Einmal als Hauptnutzer in Seller Central anmelden und „Jetzt ausführen“ klicken." };
+}
 async function automatLauf(grund) {
   if (AXA.laeuft) return { ok: false, text: "läuft gerade" };
   AXA.laeuft = true;
@@ -348,17 +367,21 @@ async function automatLauf(grund) {
     const start = konto.land;
     sellerId = await scSellerId();
     const konten = d.konten || [];
-    if (sellerId && konten.length && !konten.some((k) => k.seller_id === sellerId)) {
-      const t = "Seller Central zeigt ein anderes Konto (" + sellerId + ") als Arbitragex";
-      await axaMelden({ art: "lauf_ende", trocken, freischaltung: 0, auszahlung: 0, fehler: [t], version: chrome.runtime.getManifest().version, seller_id: sellerId });
+    const sc = { mcid: konto.mcid, paid: konto.paid };
+    const pruefung = kontoBestaetigen(sellerId, konto, konten, d.sc_bindung);
+    if (!pruefung.seller) {                                   // nichts hochladen, nichts beantragen, nichts anfordern
+      const t = pruefung.stopp;
+      await axaMelden({ art: "lauf_ende", trocken, freischaltung: 0, auszahlung: 0, fehler: [t], version: chrome.runtime.getManifest().version,
+                        seller_id: sellerId || "", seller_gelesen: !!sellerId, sc });
       return await axaStand({ text: t, fehler: [t] });
     }
-    const meinSeller = sellerId || (konten.length === 1 ? konten[0].seller_id : null);
+    const meinSeller = pruefung.seller;
     // Freischaltungen
     if (fsBlock.aktiv) {
       let rechte = false;
       for (const a of (fsBlock.einreichen || []).concat(fsBlock.anlegen || [])) {
         if (nFs >= AXA.JE_LAUF || rechte) break;
+        if (a.seller_id && a.seller_id !== meinSeller) continue;      // Auftrag eines anderen Kontos
         nFs += 1;
         let e;
         try {
@@ -378,7 +401,7 @@ async function automatLauf(grund) {
     }
     // Auszahlungen
     for (const a of azListe) {
-      if (meinSeller && a.seller_id && a.seller_id !== meinSeller) continue;
+      if (a.seller_id && a.seller_id !== meinSeller) continue;
       nAz += 1;
       let e;
       try { e = await azMarkt(a, konto, ctx, !trocken); }
@@ -392,7 +415,8 @@ async function automatLauf(grund) {
       const mk = Object.keys(ctx.laender).find((k) => ctx.laender[k] === start);
       if (mk) await scZuMarkt(konto, mk, ctx);
     }
-    await axaMelden({ art: "lauf_ende", trocken, freischaltung: nFs, auszahlung: nAz, fehler, version: chrome.runtime.getManifest().version, seller_id: sellerId });
+    await axaMelden({ art: "lauf_ende", trocken, freischaltung: nFs, auszahlung: nAz, fehler, version: chrome.runtime.getManifest().version,
+                      seller_id: sellerId || "", seller_gelesen: !!sellerId, sc });
     const text = (trocken ? "Trockenlauf: " : "") + nFs + " Antrag/Anträge, " + nAz + " Auszahlungsmarkt/-märkte" +
                  (fehler.length ? ", " + fehler.length + " Hinweis(e)" : "");
     return await axaStand({ text, fehler, trocken, nFs, nAz });
