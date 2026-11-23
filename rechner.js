@@ -191,7 +191,16 @@
     let sx = m.sales && !m.sales.fehler ? m.sales : null;
     // Das Abzeichen der offenen Seite kennt der Server beim ersten Laden noch nicht: es gilt sofort.
     const bz = badgeKurz ? parseInt(String(badgeKurz).replace(/\D/g, ""), 10) : null;
-    if (sx && bz && sx.art !== "badge") sx = Object.assign({}, sx, { pro_monat: bz, art: "badge", kurz: "Amazon-Abzeichen" });
+    // 1.9.30: Das Abzeichen ist eine Untergrenze („50+“). Belegt eine andere Untergrenze mehr (Keepa, eigene Sales,
+    // Bestandsdrops), gilt die höhere – wie auf dem Server (sales_schaetzer.schaetzung).
+    if (sx && bz && sx.art !== "badge") {
+      const oben = (sx.teile || []).filter((t) => t.typ === "untergrenze" && t.k !== "badge" && t.wert > bz)
+        .sort((a, b) => b.wert - a.wert)[0];
+      sx = oben
+        ? Object.assign({}, sx, { pro_monat: oben.wert, art: "untergrenze", kurz: oben.name,
+            hinweise: (sx.hinweise || []).concat(["Abzeichen " + zahl(bz) + "+, " + oben.name + " belegt mehr: " + zahl(oben.wert)]) })
+        : Object.assign({}, sx, { pro_monat: bz, art: "badge", kurz: "Amazon-Abzeichen" });
+    }
     if (sx) {
       const teile = (sx.teile || []).filter((t) => t.wert != null);
       if (sx.pro_monat != null) {
@@ -201,7 +210,7 @@
         schaetzWert = '<span class="mut">noch keine</span>';
         schaetzKlein = gesperrt ? '<a href="' + basis + '/billing?src=extension-keepa" target="_blank" rel="noopener">BSR-Kurve mit Abo</a>' : "zu wenig Daten";
       }
-      schaetzTip = "Vorsichtige Schätzung der Verkäufe je Monat. Es gilt die kleinste Schätzung, nie weniger als der größte beobachtete Mindestwert.\n" +
+      schaetzTip = "Vorsichtige Schätzung der Verkäufe je Monat. Es gilt die kleinste Schätzung, nie weniger als der größte beobachtete Mindestwert. Das Amazon-Abzeichen zählt als Mindestwert.\n" +
         (teile.length ? teile.map((t) => "· " + t.name + ": " + (t.typ === "untergrenze" ? "mind. " : "~") + zahl(t.wert) + " (" + t.text + ")").join("\n")
           : "Noch keine Quelle mit Daten: kein Abzeichen, kein Rangverlauf, keine Bewertungen gelesen.") +
         ((sx.hinweise || []).length ? "\n" + sx.hinweise.map((h) => "· " + h).join("\n") : "");

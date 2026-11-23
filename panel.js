@@ -17,12 +17,14 @@
   const MPS = ["de", "fr", "it", "es"];
   const FLAG = { de: "🇩🇪", fr: "🇫🇷", it: "🇮🇹", es: "🇪🇸" };
   const MID = { de: "A1PA6795UKMFR9", fr: "A13V1IB3VIYZZH", it: "APJ6JRA9NG5V4", es: "A1RKKUPIHCS9HS" };
+  const KEEPA_NR = { de: 3, fr: 4, it: 8, es: 9 };
   const BASE = "https://arbitragex.de";
   const CHIP_ID = "axx-launch";
   const SHOP_AUTOMATIK = false;                     // Panel auf Shop-Seiten nur noch über das Popup                    // Chip aus content.js, solange das Panel da ist ausgeblendet
   const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, prep: 0, ziel: 20,
               menge: 1, kanal: "fba", versand: 4.99, zu: false, pos: null, host: null, root: null,
-              fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, kurz: null, modus: "profit", einstAuf: false,
+              fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false,
+              kurz: null, modus: "profit", einstAuf: false,
               kauf: { d: null, sku: null, cond: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
 
   // Kurz: ab 1.000 € ohne Cent, sonst ohne „,00“ (Betreiber 27.10.: „kein ,00“)
@@ -67,11 +69,34 @@
     const t = location.hostname.split(".").pop();
     return MPS.includes(t) ? t : "de";
   }
+  /* 1.9.29 (badge2211, 22.11.2026): Amazon zeigt das Verkaeufe-Abzeichen an mehreren Stellen und in vielen
+   * Schreibweisen. Gemessen an 40 gespeicherten Produktseiten: 4 von 11 Seiten mit Kauf-Abzeichen trugen es nur im
+   * Schnellansicht-Absatz #pqv-bought-in-last-month, nicht im Faceout #social-proofing-faceout-title-tk_bought.
+   * „angesehen/viewed“ steht an derselben Stelle und ist KEIN Absatz -> nie als Abzeichen. */
+  const BADGE_KAUF = /gekauft|k[äa]ufe|bought|purchased|achet|acquist|comprad|vendid/i;
+  const BADGE_SICHT = /angesehen|viewed|\bvues?\b|vistas?\b|visualizzat|consultad/i;
+  const nurSicht = (t) => BADGE_SICHT.test(t) && !BADGE_KAUF.test(t);
   function badgeSeite() {
     if (!IST_AMAZON) return null;
-    const el = document.querySelector("#social-proofing-faceout-title-tk_bought");
-    const t = el ? el.textContent.replace(/\s+/g, " ").trim() : "";
-    return t || null;
+    const txt = (el) => (el ? el.textContent.replace(/\s+/g, " ").trim() : "");
+    for (const el of document.querySelectorAll('[id^="social-proofing-faceout-title-tk_bought"]')) {
+      const t = txt(el);
+      if (t && !nurSicht(t)) return t.slice(0, 80);              // Kauf-Faceout: Text in jeder Sprache
+    }
+    const weitere = [...document.querySelectorAll("#socialProofingAsinFaceout_feature_div .social-proofing-faceout-title-text"),
+                     document.getElementById("pqv-bought-in-last-month")];
+    for (const el of weitere) {
+      const t = txt(el);
+      if (t && BADGE_KAUF.test(t) && !nurSicht(t)) return t.slice(0, 80);
+    }
+    return null;
+  }
+  /* Ist die Seite fertig genug, dass „kein Abzeichen“ eine Aussage ist? Seite geladen, Abzeichen-Bereich im Markup,
+   * mindestens BADGE_WARTE_MS seit dem Seitenstart (Amazon laedt Teile nach). Sonst gilt „nicht geprueft“. */
+  const BADGE_WARTE_MS = 8000;
+  function badgeGeprueft() {
+    return IST_AMAZON && document.readyState === "complete" && !!document.getElementById("socialProofingAsinFaceout_feature_div") &&
+      performance.now() >= BADGE_WARTE_MS;
   }
   // „Nur noch 1 auf Lager“ / „Only 1 left in stock“ des Buy-Box-Angebots dieser Seite
   function restSeite() {
@@ -277,12 +302,33 @@
       if (frischAnwenden() && S.host && !tippt) zeichne();
     };
     const bew = mk === seitenMarkt() ? bewertungenSeite() : null;       // 1.9.25
+    const badge1 = mk === seitenMarkt() ? badgeSeite() : null;
     api("/api/ext/beobachtung", "POST", {
       asin, mk, angebote,
-      badge: mk === seitenMarkt() ? badgeSeite() : null,
+      badge: badge1,
       preis: mk === seitenMarkt() ? preisSeite() : null,
       bewertungen: bew
     }).then(standNehmen);
+    // 1.9.29 (badge2211): Abzeichen nachsehen, solange die Seite nachlaedt. Erscheint es spaeter, wird es nachgemeldet;
+    // bleibt es aus, meldet die Extension EINMAL „fertig gelesen, kein Abzeichen“ (badge_geprueft) -- nur das darf der
+    // Server als Beleg „ohne Abzeichen“ nehmen. Hoechstens eine Zusatzmeldung je Seitenbesuch.
+    if (mk === seitenMarkt() && IST_AMAZON && !badge1) {
+      const nachsehen = (rest) => setTimeout(() => {
+        if (S.asin !== asin || seitenAsin() !== asin) return;            // Seite/Variante gewechselt
+        const b = badgeSeite();
+        if (b) {
+          api("/api/ext/beobachtung", "POST", { asin, mk, angebote: [], badge: b, preis: null }).then(standNehmen);
+          zeichne();
+          return;
+        }
+        if (badgeGeprueft()) {
+          api("/api/ext/beobachtung", "POST", { asin, mk, angebote: [], badge: null, preis: null, badge_geprueft: true }).then(standNehmen);
+          return;
+        }
+        if (rest > 0) nachsehen(rest - 1);
+      }, 4000);
+      nachsehen(4);                                                       // bis ~20 s nach dem Laden der Angebote
+    }
     // Die Seite laedt die Bewertungen teils erst nach: einmal nachsehen und nur dann nachmelden,
     // wenn jetzt Daten da sind, die beim ersten Mal fehlten (keine Angebote, kein Badge -> keine Doppelzeilen)
     if (mk === seitenMarkt() && IST_AMAZON && !(bew && bew.rez_daten)) setTimeout(() => {
@@ -321,7 +367,7 @@
     S.host.id = "axx-panel-host";
     lage();
     S.root = S.host.attachShadow({ mode: "open" });
-    S.root.innerHTML = "<style>" + CSS + '</style><div class="p" id="p"></div>';
+    S.root.innerHTML = "<style>" + CSS + '</style><div class="p" id="p"></div><div class="cmodal" id="cmodal" hidden></div>';
     lage();
     document.documentElement.appendChild(S.host);
     // Chip aus content.js ausblenden — das minimierte Panel IST jetzt die Leiste
@@ -359,6 +405,9 @@
     lage();
     const p = root.getElementById("p");
     if (S.zu) {
+      S.chartGross = false;
+      const cm = root.getElementById("cmodal");
+      if (cm) { cm.hidden = true; cm.innerHTML = ""; }
       p.className = "p zu";
       p.innerHTML = leiste();
       kopierbar(root);
@@ -535,14 +584,57 @@
       "</div>";
   }
 
-  /* --- Chart: Buy Box / Amazon / FBA- / FBM-Minimum, Angebote, BSR ----------------
-   * Zeitachse = gewaehlter Zeitraum (30/90/365 T) bis jetzt, damit das Umschalten sichtbar
-   * wirkt. Werte als Stufen (ein Preis gilt bis zum naechsten Punkt). Ausreisser (< 40 %
-   * oder > 250 % des Medians) werden nicht gezeichnet. Hover zeigt die Werte an der Stelle. */
+  /* --- Chart (1.9.32): Buy Box / Amazon / FBA- / FBM-Minimum, Angebote, BSR ----------------
+   * Zeitachse = gewaehlter Zeitraum (30/90/365 T) bis jetzt. Werte als Stufen. Ausreisser
+   * (< 40 % oder > 250 % des Medians) werden nicht gezeichnet. Zugaenglich: feste Lesezeile
+   * statt schwebendem Tooltip, Tastatur (Pfeiltasten/Pos1/Ende/Esc) + Pointer/Touch,
+   * ein-/ausblendbare Linien mit eigener Strichart, EK-Linie, Keepa-Link, Werte als Tabelle
+   * und ein-Klick-Grossansicht direkt ueber Amazon. */
   const REIHEN = [
-    ["buybox", "Buy Box", "#f0f3f0"], ["amazon", "Amazon", "#f59e42"], ["fba_min", "FBA min", "#46d39a"],
-    ["fbm_min", "FBM min", "#8b958f"], ["angebot_min", "günstigstes", "#55625b"]];
-  const CW = 300, CH = 104, CB = 36, PL = 34, PR = 4, PT = 6, PB = 14;
+    ["buybox", "Buy Box", "#f0f3f0", 2.2, ""],
+    ["amazon", "Amazon", "#f59e42", 1.8, ""],
+    ["fba_min", "FBA min", "#46d39a", 1.6, ""],
+    ["fbm_min", "FBM min", "#a3b1a9", 1.6, "6 3"],
+    ["angebot_min", "günstigstes", "#7b8c84", 1.4, "2 3"]
+  ];
+  const UST_STD = { de: 0.19, fr: 0.20, it: 0.22, es: 0.21 };
+  const CW = 300, CH = 112, CB = 36, PL = 36, PR = 6, PT = 8, PB = 16;
+
+  function chartEkBrutto(mk) {
+    if (!(S.ek > 0)) return null;
+    return S.ekNetto ? S.ek * (1 + (UST_STD[mk] || 0.19)) : S.ek;
+  }
+  function chartWertBei(reihe, t) {
+    let v = null;
+    for (let i = 0; i < reihe.length; i++) {
+      if (reihe[i][0] <= t + 1) v = reihe[i][1]; else break;
+    }
+    return v;
+  }
+  function chartLetzterBei(liste, t) {
+    let x = null;
+    for (let i = 0; i < liste.length; i++) {
+      if (liste[i].ts <= t + 1) x = liste[i]; else break;
+    }
+    return x;
+  }
+  function chartKennzahlen(reihe, t0, t1) {
+    let sum = 0, dauer = 0, lo = Infinity, hi = -Infinity;
+    reihe.forEach((p, i) => {
+      const a = Math.max(p[0], t0), b = i + 1 < reihe.length ? reihe[i + 1][0] : t1;
+      if (b > a) { sum += p[1] * (b - a); dauer += b - a; }
+      lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]);
+    });
+    return { jetzt: reihe[reihe.length - 1][1], schnitt: dauer ? sum / dauer : reihe[0][1], tief: lo, hoch: hi };
+  }
+  function chartStrich(farbe, dash) {
+    const d = dash ? ' stroke-dasharray="' + dash.replace(/\d+/g, (n) => Math.max(2, Math.round(+n * 0.7))) + '"' : "";
+    return '<svg class="cstrich" width="16" height="8" viewBox="0 0 16 8" aria-hidden="true"><line x1="1" y1="4" x2="15" y2="4" stroke="' + farbe + '" stroke-width="2.5" stroke-linecap="round"' + d + "/></svg>";
+  }
+  function keepaUrl(asin, mk) {
+    if (!asin || asin === "-") return "";
+    return "https://keepa.com/#!product/" + (KEEPA_NR[mk] || 3) + "-" + encodeURIComponent(asin);
+  }
 
   function chartDaten(m) {
     const jetzt = Date.now() / 1000, t0 = jetzt - S.bereich * 86400;
@@ -552,91 +644,143 @@
     werte.sort((a, b) => a - b);
     const med = werte.length ? werte[Math.floor(werte.length / 2)] : null;
     const ok = (v) => v && med && v >= med * 0.4 && v <= med * 2.5;
-    // letzter Wert VOR dem Zeitraum als Startpunkt (Stufe läuft in den Zeitraum hinein)
-    const reihen = {};
+    const reihen = {}, zeiten = {};
     REIHEN.forEach(([k]) => {
       const p = alle.filter((x) => ok(x[k]));
       const vor = p.filter((x) => x.ts < t0).pop();
       const drin = p.filter((x) => x.ts >= t0).map((x) => [x.ts, x[k]]);
       if (vor) drin.unshift([t0, vor[k]]);
-      if (drin.length) reihen[k] = drin;
+      if (drin.length) { reihen[k] = drin; drin.forEach((pt) => { zeiten[pt[0]] = 1; }); }
     });
     const ang = alle.filter((x) => x.ts >= t0 && (x.fba_n != null || x.fbm_n != null));
     const bsr = alle.filter((x) => x.ts >= t0 && x.bsr);
-    return { t0, t1: jetzt, reihen, ang, bsr, punkte: alle.filter((x) => x.ts >= t0).length };
+    ang.concat(bsr).forEach((x) => { zeiten[x.ts] = 1; });
+    const ticks = Object.keys(zeiten).map(Number).filter((t) => t >= t0).sort((a, b) => a - b);
+    if (!ticks.length || ticks[ticks.length - 1] < jetzt - 60) ticks.push(jetzt);
+    return { t0, t1: jetzt, reihen, ang, bsr, ticks, punkte: alle.filter((x) => x.ts >= t0).length };
   }
 
-  function chartBlock(m) {
-    const knoepfe = [30, 90, 365].map((t) => '<button data-bereich="' + t + '" class="' + (S.bereich === t ? "an" : "") + '">' + t + " T</button>").join("");
+  function chartBlock(m, gross) {
+    const pre = gross ? "cm-" : "c-";
+    const W = gross ? 740 : CW, H = gross ? 236 : CH, HB = gross ? 58 : CB;
+    const pl = gross ? 54 : PL, pr = gross ? 14 : PR, pt = gross ? 12 : PT, pb = gross ? 22 : PB;
+    const knoepfe = [30, 90, 365].map((t) => '<button type="button" data-bereich="' + t + '" aria-pressed="' + (S.bereich === t) + '" class="' + (S.bereich === t ? "an" : "") + '">' + (t === 365 ? "1 J" : t + " T") + "</button>").join("");
+    const ku = keepaUrl(S.asin, S.mk);
+    const keepa = ku ? '<a class="ckeepa" href="' + ku + '" target="_blank" rel="noopener noreferrer" title="Produkt bei Keepa öffnen">Keepa ↗</a>' : "";
+    const grossKnopf = gross
+      ? '<button type="button" class="cbtn" id="cmZu" aria-label="Großansicht schließen">✕ Schließen</button>'
+      : '<button type="button" class="cbtn" id="cGross" title="Preisverlauf groß öffnen (Tastatur & Tabelle)" aria-label="Preisverlauf groß öffnen">⤢ Groß</button>';
+    const mkTabs = gross && S.d && S.d.maerkte
+      ? '<span class="seg mini" role="group" aria-label="Marktplatz">' + MPS.map((k) => {
+          const hat = (((S.d.maerkte[k] || {}).verlauf) || []).length > 0;
+          return '<button type="button" data-cmk="' + k + '" aria-pressed="' + (k === S.mk) + '" class="' + (k === S.mk ? "an" : "") + '"' + (hat ? "" : " disabled") + ">" + FLAG[k] + " " + k.toUpperCase() + "</button>";
+        }).join("") + "</span>"
+      : "";
     const cd = chartDaten(m);
-    const kopf = '<div class="chead"><b>Verlauf</b><span class="seg mini">' + knoepfe + "</span></div>";
-    const nReihen = Object.keys(cd.reihen).length;
-    if (!nReihen) {
-      return '<div class="box chart-box">' + kopf + '<div class="mut leer">Noch keine Preise im Zeitraum. Jeder Besuch, der Nachtlauf und Delta füllen den Verlauf.</div></div>';
+    const kopf = '<div class="chead"><b>' + (gross ? "Preisverlauf · " + esc(S.asin || "") + " (" + (S.mk || "de").toUpperCase() + ")" : "Preisverlauf") + "</b>" +
+      '<div class="chead-r">' + mkTabs + '<span class="seg mini" role="group" aria-label="Zeitraum">' + knoepfe + "</span>" + keepa + grossKnopf + "</div></div>";
+    const vorh = REIHEN.filter(([k]) => cd.reihen[k]);
+    if (!vorh.length) {
+      return '<div class="box chart-box' + (gross ? " gross" : "") + '" id="' + pre + 'box">' + kopf +
+        '<div class="mut leer">Noch keine Preise im Zeitraum. Jeder Besuch, der Nachtlauf und Delta füllen den Verlauf.</div></div>';
     }
+    let sicht = vorh.filter(([k]) => !S.chartAus[k]);
+    if (!sicht.length) sicht = [vorh[0]];
+    const ek = chartEkBrutto(S.mk);
     let lo = Infinity, hi = -Infinity;
-    Object.values(cd.reihen).forEach((r) => r.forEach(([, v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); }));
-    const pad = Math.max((hi - lo) * 0.12, hi * 0.01, 0.5);
+    sicht.forEach(([k]) => cd.reihen[k].forEach(([, v]) => { lo = Math.min(lo, v); hi = Math.max(hi, v); }));
+    const ekDrin = ek && isFinite(lo) && ek >= lo * 0.25 && ek <= hi * 4;
+    if (ekDrin) { lo = Math.min(lo, ek); hi = Math.max(hi, ek); }
+    const pad = Math.max((hi - lo) * 0.12, hi * 0.015, 0.5);
     lo = Math.max(0, lo - pad); hi += pad;
-    const X = (t) => PL + ((t - cd.t0) / (cd.t1 - cd.t0)) * (CW - PL - PR);
-    const Y = (v) => PT + (1 - (v - lo) / (hi - lo)) * (CH - PT - PB);
+    const X = (t) => pl + ((t - cd.t0) / (cd.t1 - cd.t0)) * (W - pl - pr);
+    const Y = (v) => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
     const stufe = (r) => r.map(([t, v], i) => (i ? "H" + X(t).toFixed(1) + "V" : "M" + X(t).toFixed(1) + ",") + Y(v).toFixed(1)).join("") +
       "H" + X(cd.t1).toFixed(1);
+    const schritteY = gross ? 4 : 2;
     let svg = "";
-    for (let i = 0; i <= 2; i++) {                      // Raster + Achsenbeschriftung
-      const v = lo + (hi - lo) * (i / 2), y = Y(v).toFixed(1);
-      svg += '<line x1="' + PL + '" x2="' + (CW - PR) + '" y1="' + y + '" y2="' + y + '" class="gitter"/>' +
-        '<text x="' + (PL - 3) + '" y="' + (+y + 3) + '" class="ax" text-anchor="end">' + kurzEur(v) + "</text>";
+    for (let i = 0; i <= schritteY; i++) {
+      const v = lo + (hi - lo) * (i / schritteY), y = Y(v).toFixed(1);
+      svg += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y + '" y2="' + y + '" class="gitter"/>' +
+        '<text x="' + (pl - 4) + '" y="' + (+y + 3) + '" class="ax" text-anchor="end">' + kurzEur(v) + "</text>";
     }
-    [cd.t0, (cd.t0 + cd.t1) / 2, cd.t1].forEach((t, i) => {
-      svg += '<text x="' + X(t).toFixed(1) + '" y="' + (CH - 2) + '" class="ax" text-anchor="' + ["start", "middle", "end"][i] + '">' + tag(t) + "</text>";
-    });
-    if (cd.reihen.buybox) {
+    const nx = gross ? 6 : 2;
+    for (let i = 0; i <= nx; i++) {
+      const t = cd.t0 + (cd.t1 - cd.t0) * (i / nx);
+      svg += '<text x="' + X(t).toFixed(1) + '" y="' + (H - 3) + '" class="ax" text-anchor="' + (i === 0 ? "start" : i === nx ? "end" : "middle") + '">' + tag(t) + "</text>";
+    }
+    if (cd.reihen.buybox && !S.chartAus.buybox) {
       svg += '<path d="' + stufe(cd.reihen.buybox) + "V" + Y(lo).toFixed(1) + "H" + X(cd.reihen.buybox[0][0]).toFixed(1) + 'Z" class="flaeche"/>';
     }
-    REIHEN.slice().reverse().forEach(([k, , farbe]) => {
-      if (cd.reihen[k]) svg += '<path d="' + stufe(cd.reihen[k]) + '" fill="none" stroke="' + farbe + '" stroke-width="' + (k === "buybox" ? 2 : 1.4) + '"' +
-        (k === "angebot_min" ? ' stroke-dasharray="3 2"' : "") + "/>";
+    if (ekDrin) {
+      const ye = Y(ek).toFixed(1);
+      svg += '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + ye + '" y2="' + ye + '" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="6 3"/>' +
+        '<text x="' + (W - pr - 3) + '" y="' + (+ye - 3) + '" class="ax ekax" text-anchor="end">EK ' + eur(ek) + "</text>";
+    }
+    sicht.slice().reverse().forEach(([k, , farbe, breite, dash]) => {
+      svg += '<path d="' + stufe(cd.reihen[k]) + '" fill="none" stroke="' + farbe + '" stroke-width="' + (gross ? breite : Math.max(1.3, breite - 0.2)) + '" stroke-linejoin="round"' +
+        (dash ? ' stroke-dasharray="' + dash + '"' : "") + "/>";
     });
-    svg += '<line id="hoverlinie" x1="0" x2="0" y1="' + PT + '" y2="' + (CH - PB) + '" class="hover" style="display:none"/>';
-    // Unterer Streifen: Angebote (Stufenlinie) + BSR (Linie, oben = besser) — nur aus eigenen
-    // Messungen (Abfragen, Besuche, Nachtlauf); Delta hat dafür keine Zeitreihe.
+    svg += '<g id="' + pre + 'cur" style="display:none">' +
+      '<line id="' + pre + 'hl" x1="0" x2="0" y1="' + pt + '" y2="' + (H - pb) + '" class="hover"/>' +
+      sicht.map(([k, , farbe]) => '<circle data-ck="' + k + '" r="' + (gross ? 4 : 3) + '" fill="' + farbe + '" stroke="#0f1512" stroke-width="1.2"/>').join("") +
+      "</g>";
+    // Unterer Streifen: Angebote (Stufenlinie) + BSR (Linie, oben = besser)
     let unten = "";
     const maxN = Math.max(1, ...cd.ang.map((x) => (x.fba_n || 0) + (x.fbm_n || 0)));
-    const XB = (t) => PL + ((t - cd.t0) / (cd.t1 - cd.t0)) * (CW - PL - PR);
+    const XB = (t) => pl + ((t - cd.t0) / (cd.t1 - cd.t0)) * (W - pl - pr);
     if (cd.ang.length >= 2) {
-      const YA = (n) => CB - 3 - (n / maxN) * (CB - 8);
+      const YA = (n) => HB - 4 - (n / maxN) * (HB - 10);
       unten += '<path d="' + cd.ang.map((x, i) => (i ? "H" + XB(x.ts).toFixed(1) + "V" : "M" + XB(x.ts).toFixed(1) + ",") +
         YA((x.fba_n || 0) + (x.fbm_n || 0)).toFixed(1)).join("") + "H" + XB(cd.t1).toFixed(1) + '" fill="none" stroke="#7fa8d6" stroke-width="1.5"/>' +
-        '<text x="' + (PL - 3) + '" y="9" class="ax" text-anchor="end">' + maxN + " Ang.</text>";
+        '<text x="' + (pl - 4) + '" y="10" class="ax" text-anchor="end">' + maxN + " Ang.</text>";
     }
     if (cd.bsr.length >= 2) {
       const bl = Math.min(...cd.bsr.map((x) => x.bsr)), bh = Math.max(...cd.bsr.map((x) => x.bsr));
-      const YB = (v) => 4 + ((v - bl) / Math.max(bh - bl, 1)) * (CB - 10);
+      const YB = (v) => 5 + ((v - bl) / Math.max(bh - bl, 1)) * (HB - 12);
       unten += '<path d="' + cd.bsr.map((x, i) => (i ? "L" : "M") + XB(x.ts).toFixed(1) + "," + YB(x.bsr).toFixed(1)).join("") +
-        '" fill="none" stroke="#e5b45a" stroke-width="1.3"/>' +
-        '<text x="' + (PL - 3) + '" y="' + (CB - 2) + '" class="ax" text-anchor="end">#' + kurzZahl(bl) + "</text>";
+        '" fill="none" stroke="#e5b45a" stroke-width="1.3" stroke-dasharray="3 2"/>' +
+        '<text x="' + (pl - 4) + '" y="' + (HB - 3) + '" class="ax" text-anchor="end">#' + kurzZahl(bl) + "</text>";
     }
-    let drops;
-    try { drops = bestandStreifen(m, cd, XB); }
-    catch (e) { drops = { html: '<div class="mut streifen">Bestandsdrops: Anzeige-Fehler (' + esc(e && e.message) + ")</div>", legende: "" }; }
+    let drops = { html: "", legende: "" };
+    if (!gross) {
+      try { drops = bestandStreifen(m, cd, XB); }
+      catch (e) { drops = { html: '<div class="mut streifen">Bestandsdrops: Anzeige-Fehler (' + esc(e && e.message) + ")</div>", legende: "" }; }
+    }
+    const haupt = sicht[0], kz = chartKennzahlen(cd.reihen[haupt[0]], cd.t0, cd.t1);
+    const stats = '<div class="cstats">' +
+      "<span><i>" + haupt[1] + " aktuell</i><b>" + eur(kz.jetzt) + "</b></span>" +
+      "<span><i>Ø " + (S.bereich === 365 ? "1 J" : S.bereich + " T") + "</i><b>" + eur(kz.schnitt) + "</b></span>" +
+      "<span><i>Tief</i><b>" + eur(kz.tief) + "</b></span>" +
+      "<span><i>Hoch</i><b>" + eur(kz.hoch) + "</b></span>" +
+      (ek ? "<span><i>EK" + (S.ekNetto ? " brutto" : "") + "</i><b>" + eur(ek) + "</b></span>" : "") +
+      "</div>";
     const jetztN = (m.fba_anzahl || 0) + (m.fbm_anzahl || 0);
-    const jetztBsr = S.mk === "de" && S.d.bsr ? S.d.bsr.rank : m.rang;
+    const jetztBsr = S.mk === "de" && S.d && S.d.bsr ? S.d.bsr.rank : m.rang;
     const erst = (m.verlauf || []).filter((x) => x.quelle !== "delta" && (x.fba_n != null || x.bsr)).map((x) => x.ts)[0];
     const streifenInfo = (cd.ang.length < 2 || cd.bsr.length < 2)
       ? '<div class="mut streifen">Angebote <b>' + jetztN + "</b> · BSR <b>" + (jetztBsr ? "#" + zahl(jetztBsr) : "—") +
         "</b> — Verlauf dafür" + (erst ? " ab " + tag(erst) : " ab heute") + " (eigene Messung; Delta speichert ihn nicht)</div>" : "";
-    const legende = REIHEN.filter(([k]) => cd.reihen[k]).map(([, n, f]) => '<span><i style="background:' + f + '"></i>' + n + "</span>").join("") +
-      (cd.ang.length >= 2 ? '<span><i style="background:#7fa8d6"></i>Angebote</span>' : "") +
-      (cd.bsr.length > 1 ? '<span><i style="background:#e5b45a"></i>BSR</span>' : "");
-    S.chart = { cd, X, lo, hi };
-    return '<div class="box chart-box">' + kopf +
-      '<div class="cwrap"><svg viewBox="0 0 ' + CW + " " + CH + '" class="chart" id="chart">' + svg + "</svg>" +
-      '<div class="tip" id="tip" style="display:none"></div></div>' +
-      (unten ? '<svg viewBox="0 0 ' + CW + " " + CB + '" class="chart klein">' + unten + "</svg>" : "") + streifenInfo +
+    const legende = vorh.map(([k, n, f, , dash]) => {
+      const an = !S.chartAus[k];
+      return '<button type="button" class="cleg-btn" data-linie="' + k + '" aria-pressed="' + an + '">' + chartStrich(f, dash) + n + "</button>";
+    }).join("") +
+      (ekDrin ? '<span class="cleg-fest">' + chartStrich("#a78bfa", "6 3") + "EK</span>" : "") +
+      (cd.ang.length >= 2 ? '<span class="cleg-fest">' + chartStrich("#7fa8d6", "") + "Angebote</span>" : "") +
+      (cd.bsr.length > 1 ? '<span class="cleg-fest">' + chartStrich("#e5b45a", "3 2") + "BSR</span>" : "");
+    const meta = { cd, X, Y, W, H, pl, pr, sicht, ek, i: null };
+    if (gross) S.chartModal = meta; else S.chart = meta;
+    return '<div class="box chart-box' + (gross ? " gross" : "") + '" id="' + pre + 'box" role="region" aria-label="Preisverlauf">' + kopf +
+      stats +
+      '<div class="clese" id="' + pre + 'lese" aria-live="off"></div>' +
+      '<div class="cwrap" id="' + pre + 'wrap" tabindex="0" role="group" aria-roledescription="Diagramm" aria-label="Preisverlauf – Pfeiltasten links und rechts für Messpunkte, Pos1 und Ende für Anfang und Ende">' +
+        '<svg viewBox="0 0 ' + W + " " + H + '" class="chart" id="' + pre + 'chart" aria-hidden="true">' + svg + "</svg>" +
+      "</div>" +
+      (unten ? '<svg viewBox="0 0 ' + W + " " + HB + '" class="chart klein" aria-hidden="true">' + unten + "</svg>" : "") + streifenInfo +
       drops.html +
-      '<div class="leg">' + legende + drops.legende + "</div>" +
-      '<div class="mut">' + cd.punkte + " Punkte" + ((m.verlauf || []).some((x) => x.quelle === "delta") ? " · inkl. Delta" : "") + "</div></div>";
+      '<div class="leg" role="group" aria-label="Linien ein- und ausblenden">' + legende + drops.legende + "</div>" +
+      '<details class="ctbl-det" id="' + pre + 'det"><summary>Werte als Tabelle</summary><div class="ctbl-wrap" id="' + pre + 'tb"></div></details>' +
+      '<div class="mut">' + cd.punkte + " Punkte" + ((m.verlauf || []).some((x) => x.quelle === "delta") ? " · inkl. Delta" : "") + " · Pfeiltasten oder Zeiger über das Diagramm</div></div>";
   }
 
   /* --- Bestandsdrops (10.11.2026): nur bei Produkten OHNE Verkaeufe-Badge ----------------
@@ -693,28 +837,158 @@
   function kurzZahl(n) { return n >= 10000 ? Math.round(n / 1000) + "k" : String(n); }
   function tag(t) { return new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" }); }
 
-  function chartHover(root) {
-    const svg = root.getElementById("chart"), tip = root.getElementById("tip"), linie = root.getElementById("hoverlinie");
-    if (!svg || !S.chart) return;
-    const { cd, X } = S.chart;
-    svg.onmousemove = (e) => {
+  function chartLese(root, pre, meta, t) {
+    const lese = root.getElementById(pre + "lese");
+    const cur = root.getElementById(pre + "cur");
+    if (!lese || !meta) return;
+    const { cd, X, Y, sicht } = meta;
+    const jetzt = t == null, tt = jetzt ? cd.t1 : t;
+    const teile = [];
+    sicht.forEach(([k, n, f, , dash]) => {
+      const v = chartWertBei(cd.reihen[k], tt);
+      if (v != null) teile.push('<span class="cw">' + chartStrich(f, dash) + n + " <b>" + eur(v) + "</b></span>");
+    });
+    const a = chartLetzterBei(cd.ang, tt), b = chartLetzterBei(cd.bsr, tt);
+    if (a) teile.push('<span class="cw">Ang. <b>' + ((a.fba_n || 0) + (a.fbm_n || 0)) + "</b></span>");
+    if (b) teile.push('<span class="cw">BSR <b>#' + zahl(b.bsr) + "</b></span>");
+    const kopf = jetzt ? "Aktuell" : new Date(tt * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" }) +
+      ", " + new Date(tt * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    lese.innerHTML = '<b class="ctag">' + kopf + "</b>" + (teile.length ? teile.join("") : '<span class="mut">Keine Werte</span>');
+    if (!cur) return;
+    if (jetzt) { cur.style.display = "none"; return; }
+    const x = X(tt).toFixed(1), lin = root.getElementById(pre + "hl");
+    if (lin) { lin.setAttribute("x1", x); lin.setAttribute("x2", x); }
+    cur.querySelectorAll("circle[data-ck]").forEach((c) => {
+      const v = chartWertBei(cd.reihen[c.getAttribute("data-ck")] || [], tt);
+      if (v == null) { c.style.display = "none"; return; }
+      c.style.display = ""; c.setAttribute("cx", x); c.setAttribute("cy", Y(v).toFixed(1));
+    });
+    cur.style.display = "";
+  }
+
+  function chartTabelle(root, pre, meta) {
+    const box = root.getElementById(pre + "tb");
+    if (!box || !meta) return;
+    const { cd, sicht } = meta;
+    const tage = {};
+    cd.ticks.forEach((t) => {
+      const d = new Date(t * 1000);
+      tage[d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate()] = t;
+    });
+    const liste = Object.values(tage).sort((a, b) => b - a);
+    const mitAng = cd.ang.length > 0, mitBsr = cd.bsr.length > 0;
+    let h = '<table class="ctbl"><thead><tr><th scope="col">Tag</th>' +
+      sicht.map(([, n]) => '<th scope="col" class="r">' + n + "</th>").join("") +
+      (mitAng ? '<th scope="col" class="r">Ang.</th>' : "") +
+      (mitBsr ? '<th scope="col" class="r">BSR</th>' : "") + "</tr></thead><tbody>";
+    h += liste.map((t) => {
+      const a = chartLetzterBei(cd.ang, t), b = chartLetzterBei(cd.bsr, t);
+      const dat = new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
+      return '<tr><th scope="row">' + dat + "</th>" +
+        sicht.map(([k]) => '<td class="r">' + eur(chartWertBei(cd.reihen[k], t)) + "</td>").join("") +
+        (mitAng ? '<td class="r">' + (a ? (a.fba_n || 0) + (a.fbm_n || 0) : "—") + "</td>" : "") +
+        (mitBsr ? '<td class="r">' + (b ? "#" + zahl(b.bsr) : "—") + "</td>" : "") + "</tr>";
+    }).join("");
+    box.innerHTML = h + "</tbody></table>";
+  }
+
+  function chartModalZeichne(root, fokusSel) {
+    const cm = root.getElementById("cmodal");
+    if (!cm) return;
+    if (!S.chartGross || !S.d || !S.d.maerkte) { cm.hidden = true; cm.innerHTML = ""; return; }
+    const m = S.d.maerkte[S.mk] || {};
+    cm.hidden = false;
+    cm.innerHTML = '<div class="cm-dialog" role="dialog" aria-modal="true" aria-label="Preisverlauf Großansicht">' +
+      chartBlock(m, true) + "</div>";
+    cm.onclick = (e) => { if (e.target === cm) chartModalZu(root); };
+    cm.onkeydown = (e) => { if (e.key === "Escape" && !(S.chartModal && S.chartModal.i != null)) { e.preventDefault(); chartModalZu(root); } };
+    const zu = root.getElementById("cmZu");
+    if (zu) zu.onclick = () => chartModalZu(root);
+    cm.querySelectorAll("[data-cmk]").forEach((b) => b.onclick = () => {
+      const mk = b.getAttribute("data-cmk");
+      if (!mk || mk === S.mk) return;
+      S.mk = mk; aodLaden(S.mk); zeichne();
+      const neu = root.querySelector('#cmodal [data-cmk="' + mk + '"]'); if (neu) neu.focus();
+    });
+    cm.querySelectorAll("[data-bereich]").forEach((b) => b.onclick = (e) => {
+      e.preventDefault(); S.bereich = +b.getAttribute("data-bereich"); store.set({ axxBereich: S.bereich }); zeichne();
+      const neu = root.querySelector('#cmodal [data-bereich="' + S.bereich + '"]'); if (neu) neu.focus();
+    });
+    chartHover(root, true);
+    const f = fokusSel ? root.querySelector(fokusSel) : root.getElementById("cm-wrap") || zu;
+    if (f) f.focus();
+  }
+  function chartModalZu(root) {
+    S.chartGross = false;
+    const cm = root.getElementById("cmodal");
+    if (cm) { cm.hidden = true; cm.innerHTML = ""; }
+    const b = root.getElementById("cGross"); if (b) b.focus();
+  }
+
+  function chartHover(root, gross) {
+    const pre = gross ? "cm-" : "c-";
+    const meta = gross ? S.chartModal : S.chart;
+    const box = root.getElementById(pre + "box");
+    const wrap = root.getElementById(pre + "wrap");
+    const svg = root.getElementById(pre + "chart");
+    const lese = root.getElementById(pre + "lese");
+    if (!gross) {
+      const gb = root.getElementById("cGross");
+      if (gb) gb.onclick = () => { S.chartGross = true; chartModalZeichne(root); };
+      if (S.chartGross) chartModalZeichne(root);
+    }
+    if (!box || !meta) return;
+    const { cd, W, pl, pr } = meta;
+    chartLese(root, pre, meta, null);
+    const det = root.getElementById(pre + "det");
+    if (det) det.addEventListener("toggle", () => { if (det.open) chartTabelle(root, pre, meta); });
+    box.querySelectorAll("[data-linie]").forEach((b) => b.onclick = () => {
+      const k = b.getAttribute("data-linie");
+      const aktiv = REIHEN.filter(([rk]) => cd.reihen[rk] && !S.chartAus[rk]).length;
+      if (!S.chartAus[k] && aktiv <= 1) return;
+      if (S.chartAus[k]) delete S.chartAus[k]; else S.chartAus[k] = 1;
+      store.set({ axxChartAus: S.chartAus });
+      zeichne();
+      const sel = (gross ? "#cmodal " : "#c-box ") + '[data-linie="' + k + '"]';
+      const neu = root.querySelector(sel); if (neu) neu.focus();
+    });
+    if (!wrap || !svg) return;
+    const zeitIdx = (e) => {
       const r = svg.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width * CW;
-      const t = cd.t0 + (x - PL) / (CW - PL - PR) * (cd.t1 - cd.t0);
-      if (t < cd.t0 || t > cd.t1) { tip.style.display = "none"; linie.style.display = "none"; return; }
-      const zeilen = REIHEN.filter(([k]) => cd.reihen[k]).map(([k, n, f]) => {
-        const p = cd.reihen[k].filter(([pt]) => pt <= t).pop();
-        return p ? '<div><i style="background:' + f + '"></i>' + n + " <b>" + eur(p[1]) + "</b></div>" : "";
-      }).join("");
-      const a = cd.ang.filter((x) => x.ts <= t).pop();
-      tip.innerHTML = "<div class='tt'>" + new Date(t * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" }) + "</div>" + zeilen +
-        (a ? "<div>Angebote <b>" + ((a.fba_n || 0) + (a.fbm_n || 0)) + "</b></div>" : "");
-      tip.style.display = "block";
-      const px = (X(t) / CW) * r.width;
-      tip.style.left = Math.min(Math.max(px + 8, 0), r.width - 118) + "px";
-      linie.setAttribute("x1", X(t)); linie.setAttribute("x2", X(t)); linie.style.display = "";
+      const x = (e.clientX - r.left) / r.width * W;
+      if (x < pl - 6 || x > W - pr + 6) return null;
+      const t = cd.t0 + (Math.min(Math.max(x, pl), W - pr) - pl) / (W - pl - pr) * (cd.t1 - cd.t0);
+      let best = 0;
+      for (let i = 1; i < cd.ticks.length; i++) if (Math.abs(cd.ticks[i] - t) < Math.abs(cd.ticks[best] - t)) best = i;
+      return best;
     };
-    svg.onmouseleave = () => { tip.style.display = "none"; linie.style.display = "none"; };
+    const bewegen = (e) => {
+      const i = zeitIdx(e); if (i == null) return;
+      if (lese) lese.setAttribute("aria-live", "off");
+      meta.i = i; chartLese(root, pre, meta, cd.ticks[i]);
+    };
+    wrap.onpointermove = bewegen;
+    wrap.onpointerdown = bewegen;
+    wrap.onpointerleave = (e) => { if (e.pointerType === "mouse") { meta.i = null; chartLese(root, pre, meta, null); } };
+    wrap.onkeydown = (e) => {
+      const n = cd.ticks.length;
+      let i = meta.i == null ? n - 1 : meta.i;
+      const schritt = e.shiftKey ? Math.max(5, Math.round(n / 10)) : 1;
+      if (e.key === "ArrowLeft") i = Math.max(0, i - schritt);
+      else if (e.key === "ArrowRight") i = Math.min(n - 1, i + schritt);
+      else if (e.key === "Home") i = 0;
+      else if (e.key === "End") i = n - 1;
+      else if (e.key === "Escape") {
+        if (meta.i != null) { meta.i = null; if (lese) lese.setAttribute("aria-live", "polite"); chartLese(root, pre, meta, null); e.preventDefault(); }
+        else if (gross) { chartModalZu(root); e.preventDefault(); }
+        return;
+      } else return;
+      e.preventDefault();
+      meta.i = i;
+      if (lese) lese.setAttribute("aria-live", "polite");
+      chartLese(root, pre, meta, cd.ticks[i]);
+    };
+    wrap.onblur = () => { if (lese) lese.setAttribute("aria-live", "off"); };
   }
 
   /* --- Verkaeufer: SP-API-Angebote + Namen/Stock aus der Angebotsliste ------------- */
@@ -1140,8 +1414,9 @@
   }
 
   async function pruefen() {
-    const st = await store.get(["axxModus", "axxPanel", "axxPanelZu", "axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich"]);
+    const st = await store.get(["axxModus", "axxPanel", "axxPanelZu", "axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxChartAus"]);
     if (st.axxBereich) S.bereich = Number(st.axxBereich);
+    if (st.axxChartAus && typeof st.axxChartAus === "object") S.chartAus = Object.assign({}, st.axxChartAus);
     const an = (st.axxModus || "profit") === "profit" && st.axxPanel !== false;
     S.modus = st.axxModus || "profit";
     let asin = IST_AMAZON ? seitenAsin() : null;
@@ -1174,11 +1449,12 @@
    * kein neuer Tab: ASIN -> direkt rechnen; EAN/Titel -> Katalogsuche über das eigene Konto,
    * ein Treffer -> rechnen, mehrere -> Auswahl (nie raten). Auf Shop-Seiten ist der Shop die Bezugsquelle. */
   async function menue(m) {
-    const st = await store.get(["axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxModus"]);
+    const st = await store.get(["axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxModus", "axxChartAus"]);
     S.modus = st.axxModus || "profit";
     S.pos = st.axxPanelPos || null; S.posZu = st.axxLeistePos || null;
     if (st.axxZielRoi != null) S.ziel = Number(st.axxZielRoi);
     if (st.axxBereich) S.bereich = Number(st.axxBereich);
+    if (st.axxChartAus && typeof st.axxChartAus === "object") S.chartAus = Object.assign({}, st.axxChartAus);
     S.zu = false; S.menue = true; S.menueUrl = location.href; S.treffer = null; S.wahlText = "";
     S.suchText = m.art === "text" ? String(m.wert).slice(0, 120) : "";      // ASIN/EAN stehen schon als Kennung im Kopf
     S.shop = null;
@@ -1442,21 +1718,56 @@
   .fr { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-top: 1px solid var(--linie); font-size: 11.5px; }
   .fr a { display: inline; max-width: 130px; }
 
-  /* Verlauf */
+  /* Verlauf (1.9.32: zugänglich, feste Lesezeile, Linien-Filter, EK, Keepa, Tabelle, Großansicht) */
   .chart-box { padding-bottom: 8px; }
-  .chead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .chead { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
   .chead b { font-size: 13px; font-weight: 600; }
-  .cwrap { position: relative; }
+  .chead-r { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .cbtn, .ckeepa { border: 1px solid var(--rand); background: var(--flaeche); color: var(--tinte); border-radius: 6px; padding: 2px 7px; font-size: 10.5px; font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.5; font-family: inherit; }
+  .cbtn:hover, .ckeepa:hover { background: #2d3933; border-color: #4a5952; }
+  .cstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 4px; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+  .cstats span { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 7px; padding: 4px 6px; }
+  .cstats i { display: block; font-style: normal; font-size: 9.5px; color: var(--leise); line-height: 1.25; }
+  .cstats b { display: block; font-size: 11.5px; font-weight: 600; color: var(--tinte); margin-top: 1px; }
+  .clese { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; background: #141c19; border: 1px solid var(--linie); border-radius: 7px; padding: 5px 8px; margin-bottom: 6px; font-size: 10.5px; line-height: 1.4; font-variant-numeric: tabular-nums; min-height: 24px; }
+  .clese .ctag { color: var(--tinte); font-weight: 600; margin-right: 2px; }
+  .clese .cw { display: inline-flex; align-items: center; gap: 3px; color: var(--leise); white-space: nowrap; }
+  .clese .cw b { color: var(--tinte); font-weight: 600; }
+  .cstrich { vertical-align: middle; flex: 0 0 auto; }
+  .cwrap { position: relative; border-radius: 6px; touch-action: pan-y; cursor: crosshair; }
+  .cwrap:focus-visible { outline: 2px solid var(--plus); outline-offset: 2px; }
   .chart { width: 100%; height: auto; display: block; }
-  .chart.klein { margin-top: 3px; background: #1a2320; border-radius: 5px; }
-  .chart .ax { font: 7.5px -apple-system, "Segoe UI", sans-serif; fill: #8f9c95; }
+  .chart.klein { margin-top: 4px; background: #1a2320; border-radius: 5px; }
+  .chart .ax { font: 7.5px -apple-system, "Segoe UI", sans-serif; fill: #9ba8a1; font-variant-numeric: tabular-nums; }
+  .chart-box.gross .chart .ax { font-size: 10px; }
+  .chart .ekax { fill: #c4b5fd; font-weight: 600; }
   .chart .gitter { stroke: #2a3530; stroke-width: 1; }
   .chart .flaeche { fill: rgba(240,243,240,.07); }
-  .chart .hover { stroke: var(--tinte); stroke-width: .6; stroke-dasharray: 2 2; }
-  .tip { position: absolute; top: 4px; width: 116px; background: #f0f3f0; color: #151c19; border-radius: 8px; padding: 6px 8px; font-size: 10.5px; pointer-events: none; line-height: 1.5; }
-  .tip .tt { color: #5d6a63; font-size: 10px; }
-  .tip i, .leg i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; }
-  .leg { display: flex; gap: 4px 10px; flex-wrap: wrap; font-size: 10.5px; color: var(--leise); margin-top: 6px; }
+  .chart .hover { stroke: var(--tinte); stroke-width: .8; stroke-dasharray: 2 2; }
+  .leg { display: flex; gap: 4px 6px; flex-wrap: wrap; font-size: 10.5px; color: var(--leise); margin-top: 6px; align-items: center; }
+  .leg i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; }
+  .cleg-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--linie); background: var(--flaeche); color: var(--tinte); border-radius: 6px; padding: 2px 6px; font-size: 10.5px; cursor: pointer; font-family: inherit; }
+  .cleg-btn:hover { border-color: #4a5952; }
+  .cleg-btn[aria-pressed="false"] { opacity: .42; text-decoration: line-through; background: transparent; }
+  .cleg-fest { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; font-size: 10.5px; color: var(--leise); }
+  .ctbl-det { margin-top: 6px; border-top: 1px solid var(--linie); padding-top: 4px; }
+  .ctbl-det summary { cursor: pointer; font-size: 11px; font-weight: 600; color: var(--leise); padding: 3px 0; list-style: none; display: flex; align-items: center; justify-content: space-between; }
+  .ctbl-det summary::-webkit-details-marker { display: none; }
+  .ctbl-det summary:hover { color: var(--tinte); }
+  .ctbl-wrap { max-height: 180px; overflow: auto; margin-top: 4px; border: 1px solid var(--linie); border-radius: 6px; }
+  .chart-box.gross .ctbl-wrap { max-height: 220px; }
+  .ctbl { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .ctbl th, .ctbl td { padding: 4px 6px; border-top: 1px solid var(--linie); text-align: left; white-space: nowrap; }
+  .ctbl thead th { position: sticky; top: 0; background: #18211d; color: var(--leise); font-weight: 600; border-top: 0; }
+  .ctbl tbody th { font-weight: 500; color: var(--leise); }
+  .ctbl .r { text-align: right; }
+  .cmodal[hidden] { display: none; }
+  .cmodal { position: fixed; inset: 0; z-index: 2147483647; background: rgba(7,12,10,.76); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
+  .cm-dialog { width: min(820px, 100%); max-height: 92vh; overflow: auto; background: var(--bg); color: var(--tinte); border: 1px solid var(--rand); border-radius: 14px; padding: 16px 18px 14px; box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+  .cm-dialog .chart-box.gross { border-top: 0; padding-top: 0; }
+  .cm-dialog .cstats b { font-size: 14px; }
+  .cm-dialog .clese { font-size: 12px; padding: 7px 10px; }
+  .cm-dialog .cleg-btn { padding: 4px 8px; font-size: 11.5px; }
   .leer { padding: 8px 0; }
   .streifen { margin-top: 4px; font-size: 10.5px; line-height: 1.4; }
   .streifen b { color: var(--tinte); }

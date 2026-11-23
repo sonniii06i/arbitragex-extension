@@ -59,11 +59,19 @@ async function scJson(path, method, body, csrf) {
   return { status: r.status, url: r.url, abgemeldet: scAbgemeldet(r), json, text: text.slice(0, 400) };
 }
 function scCsrf(html) {
-  const m = html.match(/<meta[^>]+name="anti-csrftoken-a2z"[^>]+content="([^"]+)"/) ||
-            html.match(/<meta[^>]+content="([^"]+)"[^>]+name="anti-csrftoken-a2z"/) ||
-            html.match(/name="anti-csrftoken-a2z"[^>]+value="([^"]+)"/);
+  // 1.9.31: Amazon schreibt Attribute mal mit " und mal mit ' – beide lesen
+  const m = html.match(/<meta[^>]+name=["']anti-csrftoken-a2z["'][^>]+content=["']([^"']+)["']/) ||
+            html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']anti-csrftoken-a2z["']/) ||
+            html.match(/name=["']anti-csrftoken-a2z["'][^>]+value=["']([^"']+)["']/);
   return m ? m[1] : "";
 }
+// 1.9.31: Der Antragsknopf ist ein Formular mit verstecktem Feld appFormPageCsrfToken. Ohne das Feld antwortet Amazon 403.
+function fsFormToken(html) {
+  const m = html.match(/name=["']appFormPageCsrfToken["'][^>]*value=["']([^"']*)["']/) ||
+            html.match(/value=["']([^"']*)["'][^>]*name=["']appFormPageCsrfToken["']/);
+  return m ? m[1] : "";
+}
+const FS_SOFORT_FREI = /Antrag auf Freischaltung ist genehmigt|application (?:to sell|for approval)[^.]{0,60}(?:is|has been) approved|demande[^.]{0,60}approuv|richiesta[^.]{0,60}approvat|solicitud[^.]{0,60}aprobad/i;
 const SC_RECHTE = /Zugriff erforderlich|Access required|not authorized|nicht berechtigt/;
 
 async function scKonto() {
@@ -156,12 +164,17 @@ async function fsAnlegen(a, konto, ctx) {
   let url = "/hz/approvalrequest?asin=" + encodeURIComponent(a.asin);
   const m = html.replace(/&quot;/g, '"').match(/submitRequestApproval="?\{[^}]*"url":"([^"]+)"/i);
   if (m && m[1].startsWith("/hz/")) url = m[1];
-  const p = await fetch(AXA.SC + url, { method: "POST", credentials: "include", redirect: "follow" });
-  let appId = ((p.url || "").match(/application[-_]?[iI]d=([A-Za-z0-9-]{8,})/) || [])[1];
-  if (!appId) {
-    const t = await p.text();
-    appId = (t.match(/applicationId=([A-Za-z0-9-]{8,})/) || [])[1];
-  }
+  const tok = fsFormToken(html);
+  const p = await fetch(AXA.SC + url, { method: "POST", credentials: "include", redirect: "follow",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(tok ? { appFormPageCsrfToken: tok } : {}).toString() });
+  const t = await p.text();
+  let appId = ((p.url || "").match(/application[-_]?[iI]d=([A-Za-z0-9-]{8,})/) || [])[1] ||
+              (t.match(/application[-_]?[iI]d=([A-Za-z0-9-]{8,})/) || [])[1];
+  // Amazon genehmigt manche Anträge sofort („aufgrund Ihrer Verkäuferleistung“) – dann gibt es kein Formular mehr
+  if (p.ok && FS_SOFORT_FREI.test(t.replace(/<[^>]+>/g, " ")))
+    return Object.assign(out, { frei: true, application_id: appId || null, meldung: "Amazon: sofort genehmigt (Verkäuferleistung)" });
+  if (p.status === 403 && !appId) return Object.assign(out, { fehler: "Antrag abgelehnt: HTTP 403" + (tok ? "" : " (Formular-Token fehlt)") });
   if (!appId) {                                   // Entwurf besteht schon (z. B. vom Worker): jüngsten aus der Liste nehmen
     const liste = (await fsListe(a.asin, scCsrf(html))) || [];
     const d = liste.filter((x) => x && x.status === "DRAFT").sort((x, y) => String(y.dateChanged || "").localeCompare(String(x.dateChanged || "")))[0];

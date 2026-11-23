@@ -531,11 +531,25 @@
     return null;
   }
 
+  // 1.9.29 (badge2211): wie panel.js badgeSeite() -- Faceout, weitere Faceout-Texte und Schnellansicht
+  // (#pqv-bought-in-last-month); „angesehen/viewed“ ist kein Absatz.
   function kaufAbzeichen() {
     try {
-      const el = document.querySelector("#social-proofing-faceout-title-tk_bought");
-      const t = el ? el.textContent.replace(/\s+/g, " ").trim() : "";
-      return t ? t.slice(0, 80) : null;
+      const KAUF = /gekauft|k[äa]ufe|bought|purchased|achet|acquist|comprad|vendid/i;
+      const SICHT = /angesehen|viewed|\bvues?\b|vistas?\b|visualizzat|consultad/i;
+      const nurSicht = (t) => SICHT.test(t) && !KAUF.test(t);
+      const txt = (el) => (el ? el.textContent.replace(/\s+/g, " ").trim() : "");
+      for (const el of document.querySelectorAll('[id^="social-proofing-faceout-title-tk_bought"]')) {
+        const t = txt(el);
+        if (t && !nurSicht(t)) return t.slice(0, 80);
+      }
+      const weitere = [...document.querySelectorAll("#socialProofingAsinFaceout_feature_div .social-proofing-faceout-title-text"),
+                       document.getElementById("pqv-bought-in-last-month")];
+      for (const el of weitere) {
+        const t = txt(el);
+        if (t && KAUF.test(t) && !nurSicht(t)) return t.slice(0, 80);
+      }
+      return null;
     } catch (e) { return null; }
   }
 
