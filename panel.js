@@ -25,7 +25,7 @@
               menge: 1, kanal: "fba", versand: 4.99, zu: false, pos: null, host: null, root: null,
               fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false,
               kurz: null, modus: "profit", einstAuf: false,
-              kauf: { d: null, sku: null, cond: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
+              kauf: { d: null, sku: null, cond: null, chan: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
 
   // Kurz: ab 1.000 € ohne Cent, sonst ohne „,00“ (Betreiber 27.10.: „kein ,00“)
   const eur = (n) => {
@@ -1081,6 +1081,7 @@
       if ($("bestellnr")) $("bestellnr").oninput = (e) => { S.kauf.nr = e.target.value; };
       if ($("sku")) $("sku").onchange = (e) => { S.kauf.sku = e.target.value; zeichne(); };
       if ($("cond")) $("cond").onchange = (e) => { S.kauf.cond = e.target.value; };
+      if ($("kchan")) $("kchan").onchange = (e) => { S.kauf.chan = e.target.value; };
       ek.onkeydown = (e) => { if (e.key === "Enter" && !(S.d && S.d.abo === false)) einkaufRegistrieren(); };
       if ($("prep")) $("prep").oninput = (e) => { const v = num(e.target.value); S.prep = v == null ? 0 : v; rechnen(); };
       if ($("prep")) $("prep").onchange = () => api("/api/ext/einstellungen", "POST", { prep: S.prep });   // in Arbitragex hinterlegt
@@ -1125,11 +1126,16 @@
         : (d.warnung ? "⚠️ " + d.warnung : "");      // „noch keine SKU“ sagt schon die Auswahl „Neue SKU anlegen“ (spart eine Zeile)
     }
     const neu = k.d && k.sku === "__neu__";
+    const aktChan = k.chan || (S.kanal === "fbm" ? "FBM" : "FBA");
     return '<div class="kaufgrid">' +
       '<label>Bestellt bei<input id="url" type="url" placeholder="Link zum Einkauf (Shop/Bestellung)" value="' + esc(S.url || "") + '"></label>' +
       '<label>Bestellnr.<input id="bestellnr" type="text" placeholder="optional" value="' + esc(k.nr || "") + '"></label>' +
-      (abo ? '<label class="' + (neu ? "" : "voll") + '">SKU<select id="sku"' + (k.d ? "" : " disabled") + ">" + skuOpt + "</select></label>" +
-        (neu ? '<label>Zustand der neuen SKU<select id="cond">' + zust + "</select></label>" : "") +
+      (abo ? '<label class="voll">SKU<select id="sku"' + (k.d ? "" : " disabled") + ">" + skuOpt + "</select></label>" +
+        (neu ? '<label>Zustand der neuen SKU<select id="cond">' + zust + "</select></label>" +
+          '<label>Versandart (Listing)<select id="kchan">' +
+            '<option value="FBA"' + (aktChan !== "FBM" ? " selected" : "") + ">FBA (Amazon)</option>" +
+            '<option value="FBM"' + (aktChan === "FBM" ? " selected" : "") + ">FBM (Eigenversand)</option>" +
+          "</select></label>" : "") +
         (hinweis ? '<div class="skunote voll">' + esc(hinweis) + "</div>" : "") : "") +
       "</div>";
   }
@@ -1155,20 +1161,26 @@
     merkeEk();
     const k = S.d.katalog || {}, url = (S.url || location.href).trim();
     let shop = ""; try { shop = new URL(url).hostname.replace(/^www\./, ""); } catch (e) { }
-    const wahl = S.kauf.sku === "__neu__" ? { new_sku: true, condition: S.kauf.cond || "new_new" } : (S.kauf.sku ? { sku: S.kauf.sku } : {});
+    const listCh = S.kauf.chan || (S.kanal === "fbm" ? "FBM" : "FBA");
+    const wahl = S.kauf.sku === "__neu__"
+      ? { new_sku: true, condition: S.kauf.cond || "new_new", list_channel: listCh, announce: listCh !== "FBM" }
+      : (S.kauf.sku ? { sku: S.kauf.sku } : {});
     const de = (S.d.maerkte.de || {}).buybox;
+    // 1.9.33: nur einen selbst geaenderten VK als sell_price schicken; sonst null, damit der Server den eigenen Aufschlag (DEFAULT_MARKUP) anwendet statt die rohe Buy Box zu listen.
+    const eigenVk = (S.vk.de != null && S.vk.de > 0 && (de == null || Math.abs(S.vk.de - de) >= 0.005)) ? S.vk.de : null;
     const r = await api("/api/purchases", "POST", Object.assign({
       asin: S.asin, title: k.titel, image: k.bild, source: shop, source_url: url, cost: S.ek, quantity: S.menge || 1,
-      sell_price: de != null ? de : null, order_number: (S.kauf.nr || "").trim(), cost_gross: S.ekNetto ? 0 : 1, markup: AUFSCHLAG_STD }, wahl));
+      sell_price: eigenVk, order_number: (S.kauf.nr || "").trim(), cost_gross: S.ekNetto ? 0 : 1 }, wahl));
     S.kauf.sendet = false;
     if (!r.ok) {
       btn.disabled = false; btn.textContent = "Einkauf registrieren";
       return melde('<div class="kerr">' + esc((r.data && r.data.error) || r.error || ("HTTP " + r.status)) + "</div>");
     }
     if (r.data && r.data.auto === false && r.data.id) await api("/api/purchases/export", "POST", { ids: [r.data.id] });
-    const listTxt = (r.data && r.data.listing_enabled === false) ? "Amazon-Listing ist in den Einstellungen aus" : "Listing läuft";
+    const chTxt = (r.data && r.data.list_channel === "FBM") ? "FBM" : "FBA";
+    const listTxt = (r.data && r.data.listing_enabled === false) ? "Amazon-Listing ist in den Einstellungen aus" : chTxt + "-Listing läuft";
     S.kaufMeldung = '<div class="kok">Einkauf registriert: ' + (S.menge || 1) + " × " + eur(S.ek) + (r.data && r.data.sku ? ", SKU " + esc(r.data.sku) : "") +
-      "<small>" + listTxt + ((r.data && r.data.prep_connected) ? ", Prep angemeldet" : "") + ". Status siehst du in Arbitragex unter Einkäufe.</small></div>";
+      "<small>" + listTxt + ((r.data && r.data.prep_connected && !r.data.announce_off) ? ", Prep angemeldet" : "") + ". Status siehst du in Arbitragex unter Einkäufe.</small></div>";
     if (r.data && r.data.sku) { S.kauf.d = null; S.kauf.sku = r.data.sku; skusLaden(S.asin); }   // neue SKU erscheint in der Liste
     zeichne();
   }

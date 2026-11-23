@@ -292,6 +292,8 @@ function render() {
       // Neu + FBA; „Neue SKU anlegen" blendet den Zustand ein.
       '<label class="axx-sku">SKU<select id="axx-b-sku" disabled><option value="">lade SKUs…</option></select></label>' +
       '<label id="axx-b-condbox" style="display:none">Zustand der neuen SKU<select id="axx-b-cond"></select></label>' +
+      '<label id="axx-b-chanbox" style="display:none">Versandart (Listing)<select id="axx-b-chan">' +
+        '<option value="FBA">FBA (Amazon)</option><option value="FBM">FBM (Eigenversand)</option></select></label>' +
       '<div class="axx-full axx-skunote" id="axx-b-skunote"></div>' +
     "</div>" +
 
@@ -306,7 +308,7 @@ function render() {
       '<button class="axx-mk" data-mk="30">+30 %</button>' +
       '<input id="axx-mkc" type="number" min="0" value="' + state.markup + '"><span>%</span></div>' +
     '<div class="axx-mps">' + cells + "</div>" +
-    '<div class="axx-buygrid"><label class="axx-full">Listing-Preis DE €<input id="axx-b-sell" type="text" inputmode="decimal" value="' + vk + '"></label></div>' +
+    '<div class="axx-buygrid"><label class="axx-full">Listing-Preis DE € (leer = Buy Box + Aufschlag)<input id="axx-b-sell" type="text" inputmode="decimal" value="" placeholder="auto = Buy Box + Aufschlag"></label></div>' +
     "</details>" +
 
     einstellungBlock();
@@ -347,17 +349,23 @@ async function loadSkus() {
   const sel = document.getElementById("axx-b-sku");
   const cond = document.getElementById("axx-b-cond");
   const box = document.getElementById("axx-b-condbox");
+  const chBox = document.getElementById("axx-b-chanbox");
+  const chSel = document.getElementById("axx-b-chan");
   const note = document.getElementById("axx-b-skunote");
   if (!sel) return;
   let hinweis = "";
   const sync = () => {
-    box.style.display = sel.value === "__neu__" ? "" : "none";
+    const neu = sel.value === "__neu__";
+    box.style.display = neu ? "" : "none";
+    if (chBox) chBox.style.display = neu ? "" : "none";
+    if (neu && chSel && !chSel.dataset.manuell) chSel.value = state.kanal === "fbm" ? "FBM" : "FBA";
     const o = sel.selectedOptions[0];
     // FBM-SKU: der Nachkauf passt dort nur den Preis an, er stellt nicht auf FBA um.
     note.textContent = (o && o.getAttribute("data-chan") === "FBM")
       ? "⚠️ FBM-SKU: Es wird nur der Preis angepasst, die Versandart bleibt FBM. Für die Einlagerung bei Amazon eine FBA-SKU wählen oder eine neue anlegen."
       : hinweis;
   };
+  if (chSel) chSel.addEventListener("change", () => { chSel.dataset.manuell = "1"; });
   sel.addEventListener("change", sync);
   const r = await api("/api/ext/skus?asin=" + encodeURIComponent(state.data.asin));
   const d = (r && r.ok && r.data) ? r.data : { skus: [], neu_zustaende: [],
@@ -385,7 +393,8 @@ function skuWahl() {
   const sel = document.getElementById("axx-b-sku");
   if (!sel || !state.skusLoaded) return {};          // Liste noch nicht da -> Server-Standard
   if (sel.value === "__neu__") {
-    return { new_sku: true, condition: document.getElementById("axx-b-cond").value || "new_new" };
+    const ch = (document.getElementById("axx-b-chan") && document.getElementById("axx-b-chan").value) || (state.kanal === "fbm" ? "FBM" : "FBA");
+    return { new_sku: true, condition: document.getElementById("axx-b-cond").value || "new_new", list_channel: ch, announce: ch !== "FBM" };
   }
   return sel.value ? { sku: sel.value } : {};
 }
@@ -677,6 +686,8 @@ function renderProfit() {
   }));
   box.querySelectorAll("[data-kanal]").forEach((b) => b.addEventListener("click", () => {
     state.kanal = b.getAttribute("data-kanal");
+    const chSel = document.getElementById("axx-b-chan");
+    if (chSel && !chSel.dataset.manuell) chSel.value = state.kanal === "fbm" ? "FBM" : "FBA";
     try { chrome.storage.local.set({ ["axxKanal:" + state.data.asin]: state.kanal }); } catch (e) { }
     renderProfit();
   }));
