@@ -580,11 +580,12 @@ async function profitStart() {
   const host = (state.tabUrl || "").match(/amazon\.(de|fr|it|es)\//);
   state.mk = host ? host[1] : "de";
   state.seitenMk = state.mk;                      // Markt der geöffneten Seite: nur dort gilt das Abzeichen der Seite
-  state.kanal = "fba"; state.versand = 4.99;
+  state.kanal = "fba";
+  state.versandDe = d.fbm_versand_de != null ? Number(d.fbm_versand_de) : 4.99;
+  state.versandEu = d.fbm_versand_eu != null ? Number(d.fbm_versand_eu) : 14.99;
   try {
-    const st = await chrome.storage.local.get(["axxKanal:" + d.asin, "axxVersandFbm"]);
+    const st = await chrome.storage.local.get(["axxKanal:" + d.asin]);
     if (st["axxKanal:" + d.asin] === "fbm") state.kanal = "fbm";
-    if (st.axxVersandFbm != null) state.versand = Number(st.axxVersandFbm);
   } catch (e) { }
   renderProfit();
   const ekFeld = document.getElementById("axx-pf-ek");
@@ -644,7 +645,7 @@ function renderProfit() {
         '<span class="pp-seg"><button data-kanal="fba" class="' + (state.kanal !== "fbm" ? "an" : "") + '">FBA</button>' +
           '<button data-kanal="fbm" class="' + (state.kanal === "fbm" ? "an" : "") + '">FBM</button></span>' +
         (state.kanal === "fbm"
-          ? '<label>Versand €<input id="pp-versand" inputmode="decimal" value="' + String(state.versand).replace(".", ",") + '"></label>'
+          ? '<label title="Netto-Versandkosten für ' + (state.mk === "de" ? "Deutschland" : "EU-Ausland") + ' (gilt für dieses Produkt; Standard unter ⚙ oder in Arbitragex)">Versand ' + (state.mk === "de" ? "DE" : "EU") + ' netto €<input id="pp-versand" inputmode="decimal" value="' + String(state.mk === "de" ? state.versandDe : state.versandEu).replace(".", ",") + '"></label>'
           : '<label>Prep €<input id="axx-pf-prep" inputmode="decimal" value="' + String(state.prep).replace(".", ",") + '"></label>') +
         '<label>Ziel-ROI<input id="axx-pf-ziel" inputmode="decimal" value="' + state.ziel + '"></label>' +
         '<label class="pp-cb"><input type="checkbox" id="axx-pf-netto"' + (state.ekNetto ? " checked" : "") + "> EK netto</label>" +
@@ -695,13 +696,21 @@ function renderProfit() {
   $("pp-menge").addEventListener("input", (e) => {
     const q = $("axx-b-qty"); if (q) q.value = e.target.value; profitRechnen();
   });
-  if ($("pp-versand")) $("pp-versand").addEventListener("input", (e) => {
-    const v = num(e.target.value); state.versand = v == null ? 0 : v;
-    try { chrome.storage.local.set({ axxVersandFbm: state.versand }); } catch (err) { }
-    profitRechnen();
-  });
+  if ($("pp-versand")) {
+    $("pp-versand").addEventListener("input", (e) => {
+      const v = num(e.target.value), val = v == null ? 0 : v;
+      if (state.mk === "de") state.versandDe = val; else state.versandEu = val;
+      profitRechnen();
+    });
+  }
   $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; profitRechnen(); });
-  if ($("axx-pf-prep")) $("axx-pf-prep").addEventListener("input", (e) => { const v = num(e.target.value); state.prep = v == null ? 0 : v; profitRechnen(); });
+  if ($("axx-pf-prep")) {
+    $("axx-pf-prep").addEventListener("input", (e) => { const v = num(e.target.value); state.prep = v == null ? 0 : v; profitRechnen(); });
+    $("axx-pf-prep").addEventListener("change", () => {
+      if (state.profit) state.profit.prep = state.prep;
+      api("/api/ext/einstellungen", "POST", { prep: state.prep });
+    });
+  }
   $("axx-pf-ziel").addEventListener("input", (e) => {
     const v = num(e.target.value);
     if (v == null) return;
@@ -733,12 +742,12 @@ function profitRechnen() {
   const land = einkaufsland();
   const menge = Math.max(1, Math.floor(num((document.getElementById("pp-menge") || {}).value) || 1));
   const o = { kanal: state.kanal || "fba", ekNetto: state.ekNetto, land, ekUst: d.ek_ust || 19, prep: state.prep,
-              ziel: state.ziel, menge, versand: state.versand, vorsteuer: d.gebuehren_vorsteuer !== false, ustModus: state.ustModus };
+              ziel: state.ziel, menge, vorsteuer: d.gebuehren_vorsteuer !== false, ustModus: state.ustModus };
   let sel = null;
   MPS.forEach((mk) => {
     const m = d.maerkte[mk] || {};
     if (!m.vorhanden) return;
-    const e = AxxRechner.rechne(m, state.tarif[mk], state.vk[mk], ek, Object.assign({}, o, { efn: state.tarif[mk] }));
+    const e = AxxRechner.rechne(m, state.tarif[mk], state.vk[mk], ek, Object.assign({}, o, { efn: state.tarif[mk], versand: mk === "de" ? state.versandDe : state.versandEu }));
     const g = document.getElementById("pp-g-" + mk), r = document.getElementById("pp-r-" + mk);
     if (g) g.innerHTML = e.ok && e.gewinn != null ? '<b class="' + (e.gewinn >= 0 ? "pp-pos" : "pp-neg") + '">' + eur(e.gewinn) + "</b>" : '<span class="pp-mut">—</span>';
     if (r) r.textContent = e.ok && e.roi != null ? pct(e.roi) : "—";
@@ -769,6 +778,8 @@ function profitRechnen() {
     if (sel && sel.ok && sel.fbaFehlt) teile.push("⚠ Amazon liefert für diesen Artikel keine FBA-Gebühr – sie fehlt in der Rechnung, der Gewinn ist zu hoch.");
     if (sel && sel.ok && sel.fbaTarif) teile.push("FBA-Gebühr nach Amazon-Tarifkarte aus den Packmaßen (Amazon nennt keinen Wert).");
     if (sel && sel.ok && !sel.exakt && d.exakt_abruf) teile.push("Gebühren für diesen VK werden bei Amazon abgefragt …");
+    const aktV = state.mk === "de" ? state.versandDe : state.versandEu;
+    if (state.kanal === "fbm" && aktV >= 30) teile.push("⚠ Versand " + eur(aktV) + " eingetragen – wirklich so hoch oder Komma vergessen?");
     if (ek && bbDe && ek < bbDe * 0.4) teile.push("⚠ EK " + eur(ek) + " liegt unter 40 % der Buy Box (" + eur(bbDe) + ") – bitte prüfen (Ratenpreis, andere Variante, Gebrauchtpreis?).");
     h.innerHTML = teile.map(esc).join("<br>");
   }
@@ -818,7 +829,11 @@ function einstellungBlock() {
       (state.modus === "einkauf" ? " disabled" : "") + "> Panel direkt auf der Amazon-Produktseite (wie SellerAmp)</label>" +
     '<label class="axx-einst-r">Prep-/Inbound-Kosten je Stück €<input id="axx-einst-prep" inputmode="decimal" style="width:60px" value="' +
       (state.profit ? String(state.profit.prep).replace(".", ",") : "") + '" placeholder="aus Arbitragex"></label>' +
-    '<div class="axx-pf-muted">EFN/Pan-EU und CEP stellst du in Arbitragex → Einstellungen ein. Änderungen gelten ab dem nächsten Öffnen bzw. sofort auf offenen Amazon-Seiten.</div>' +
+    '<label class="axx-einst-r">FBM-Versand DE netto €<input id="axx-einst-fbm-de" inputmode="decimal" style="width:60px" value="' +
+      (state.profit && state.profit.fbm_versand_de != null ? String(state.profit.fbm_versand_de).replace(".", ",") : "4,99") + '" placeholder="4,99"></label>' +
+    '<label class="axx-einst-r">FBM-Versand EU netto €<input id="axx-einst-fbm-eu" inputmode="decimal" style="width:60px" value="' +
+      (state.profit && state.profit.fbm_versand_eu != null ? String(state.profit.fbm_versand_eu).replace(".", ",") : "14,99") + '" placeholder="14,99"></label>' +
+    '<div class="axx-pf-muted">Prep und Standard-FBM-Versand (DE/EU) werden im Arbitragex-Konto gespeichert. EFN/Pan-EU und CEP stellst du in Arbitragex → Einstellungen ein.</div>' +
     automatBlock() +
     "</details>";
 }
@@ -922,6 +937,23 @@ function einstellungWire() {
     const r = await api("/api/ext/einstellungen", "POST", { prep: v });
     pr.style.outline = r && r.ok ? "2px solid #46d39a" : "2px solid #ff8073";
     if (r && r.ok) { state.prep = v; if (state.profit) state.profit.prep = v; profitRechnen(); }
+  });
+  [["axx-einst-fbm-de", "fbm_versand_de", "de"], ["axx-einst-fbm-eu", "fbm_versand_eu", "eu"]].forEach(([id, key, zone]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", async () => {
+      const v = num(el.value);
+      if (v == null || v < 0 || v > 500) return;
+      const r = await api("/api/ext/einstellungen", "POST", { [key]: v });
+      el.style.outline = r && r.ok ? "2px solid #46d39a" : "2px solid #ff8073";
+      if (r && r.ok) {
+        if (zone === "de") state.versandDe = v; else state.versandEu = v;
+        if (state.profit) state.profit[key] = v;
+        const vf = document.getElementById("pp-versand");
+        if (vf && ((zone === "de" && state.mk === "de") || (zone === "eu" && state.mk !== "de"))) vf.value = String(v).replace(".", ",");
+        profitRechnen();
+      }
+    });
   });
   const p = document.getElementById("axx-einst-panel");
   if (p) p.addEventListener("change", async () => {

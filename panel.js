@@ -22,10 +22,11 @@
   const CHIP_ID = "axx-launch";
   const SHOP_AUTOMATIK = false;                     // Panel auf Shop-Seiten nur noch über das Popup                    // Chip aus content.js, solange das Panel da ist ausgeblendet
   const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, prep: 0, ziel: 20,
-              menge: 1, kanal: "fba", versand: 4.99, zu: false, pos: null, host: null, root: null,
+              menge: 1, kanal: "fba", versandDe: 4.99, versandEu: 14.99, zu: false, pos: null, host: null, root: null,
               fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false,
               kurz: null, modus: "profit", einstAuf: false,
               kauf: { d: null, sku: null, cond: null, chan: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
+  const fbmVersand = (k) => (k || S.mk) === "de" ? S.versandDe : S.versandEu;
 
   // Kurz: ab 1.000 € ohne Cent, sonst ohne „,00“ (Betreiber 27.10.: „kein ,00“)
   const eur = (n) => {
@@ -530,7 +531,7 @@
         '<label>Menge<input id="menge" inputmode="numeric" value="' + S.menge + '"></label>' +
       "</div>" +
       '<div class="opt">' + kanalBtn + tarif +
-        (S.kanal === "fbm" ? '<label>Versand €<input id="versand" inputmode="decimal" value="' + String(S.versand).replace(".", ",") + '"></label>'
+        (S.kanal === "fbm" ? '<label title="Netto-Versandkosten für ' + (mk === "de" ? "Deutschland" : "EU-Ausland") + ' (gilt für dieses Produkt; Standard unter ⚙ oder in Arbitragex)">Versand ' + (mk === "de" ? "DE" : "EU") + ' netto €<input id="versand" inputmode="decimal" value="' + String(fbmVersand(mk)).replace(".", ",") + '"></label>'
                            : '<label>Prep €<input id="prep" inputmode="decimal" value="' + String(S.prep).replace(".", ",") + '"></label>') +
         '<label>Ziel-ROI<input id="ziel" inputmode="decimal" value="' + S.ziel + '"></label>' +
         '<label><input type="checkbox" id="netto"' + (S.ekNetto ? " checked" : "") + "> EK netto</label>" +
@@ -1085,7 +1086,13 @@
       ek.onkeydown = (e) => { if (e.key === "Enter" && !(S.d && S.d.abo === false)) einkaufRegistrieren(); };
       if ($("prep")) $("prep").oninput = (e) => { const v = num(e.target.value); S.prep = v == null ? 0 : v; rechnen(); };
       if ($("prep")) $("prep").onchange = () => api("/api/ext/einstellungen", "POST", { prep: S.prep });   // in Arbitragex hinterlegt
-      if ($("versand")) $("versand").oninput = (e) => { const v = num(e.target.value); S.versand = v == null ? 0 : v; store.set({ axxVersandFbm: S.versand }); rechnen(); };
+      if ($("versand")) {
+        $("versand").oninput = (e) => {
+          const v = num(e.target.value), val = v == null ? 0 : v;
+          if (S.mk === "de") S.versandDe = val; else S.versandEu = val;
+          rechnen();
+        };
+      }
       $("ziel").oninput = (e) => { const v = num(e.target.value); if (v == null) return; S.ziel = v; store.set({ axxZielRoi: v }); rechnen(); };
       const t = $("tarif");
       if (t) t.onclick = () => { S.tarif[S.mk] = !S.tarif[S.mk]; zeichne(); };
@@ -1192,8 +1199,10 @@
       '<label class="er"><input type="radio" name="modus" value="profit"' + (S.modus !== "einkauf" ? " checked" : "") + "> Zusätzlich Profit-Rechner</label>" +
       '<label class="er sub"><input type="checkbox" id="einst-panel" checked' + (S.modus === "einkauf" ? " disabled" : "") + "> Panel direkt auf der Amazon-Produktseite (wie SellerAmp)</label>" +
       '<label class="er">Prep-/Inbound-Kosten je Stück €<input id="einst-prep" inputmode="decimal" value="' + String(S.prep).replace(".", ",") + '" placeholder="aus Arbitragex"></label>' +
+      '<label class="er">FBM-Versand DE netto €<input id="einst-fbm-de" inputmode="decimal" value="' + String(S.d && S.d.fbm_versand_de != null ? S.d.fbm_versand_de : S.versandDe).replace(".", ",") + '" placeholder="4,99"></label>' +
+      '<label class="er">FBM-Versand EU netto €<input id="einst-fbm-eu" inputmode="decimal" value="' + String(S.d && S.d.fbm_versand_eu != null ? S.d.fbm_versand_eu : S.versandEu).replace(".", ",") + '" placeholder="14,99"></label>' +
       '<div class="mut">Mit „Nur Einkäufe“ oder ohne den Haken verschwindet das Panel von der Seite; zurück geht es über das Extension-Symbol oben rechts. ' +
-      "EFN/Pan-EU und CEP stellst du in Arbitragex unter Einstellungen ein.</div></details>";
+      "Prep und Standard-FBM-Versand (DE/EU) werden im Arbitragex-Konto gespeichert; EFN/Pan-EU und CEP stellst du in Arbitragex unter Einstellungen ein.</div></details>";
   }
   function einstellungenVerdrahten(root) {
     const det = root.getElementById("einst");
@@ -1209,6 +1218,23 @@
       pr.style.outline = r && r.ok ? "2px solid #46d39a" : "2px solid #ff8073";
       if (r && r.ok) { S.prep = v; if (S.d) S.d.prep = v; const f = root.getElementById("prep"); if (f) f.value = String(v).replace(".", ","); rechnen(); }
     };
+    [["einst-fbm-de", "fbm_versand_de", "de"], ["einst-fbm-eu", "fbm_versand_eu", "eu"]].forEach(([id, key, zone]) => {
+      const el = root.getElementById(id);
+      if (!el) return;
+      el.onchange = async () => {
+        const v = num(el.value);
+        if (v == null || v < 0 || v > 500) return;
+        const r = await api("/api/ext/einstellungen", "POST", { [key]: v });
+        el.style.outline = r && r.ok ? "2px solid #46d39a" : "2px solid #ff8073";
+        if (r && r.ok) {
+          if (zone === "de") S.versandDe = v; else S.versandEu = v;
+          if (S.d) S.d[key] = v;
+          const vf = root.getElementById("versand");
+          if (vf && ((zone === "de" && S.mk === "de") || (zone === "eu" && S.mk !== "de"))) vf.value = String(v).replace(".", ",");
+          rechnen();
+        }
+      };
+    });
   }
 
   function merkeEk() {
@@ -1217,7 +1243,7 @@
 
   function opts(k, kanal) {
     return { kanal: kanal || S.kanal, efn: S.tarif[k], ekNetto: S.ekNetto, land: AxxRechner.einkaufsland(S.url), ekUst: S.d.ek_ust || 19,
-             prep: S.prep, ziel: S.ziel, menge: S.menge, versand: S.versand,
+             prep: S.prep, ziel: S.ziel, menge: S.menge, versand: fbmVersand(k),
              vorsteuer: S.d.gebuehren_vorsteuer !== false, ustModus: S.ustModus };      // Einstellung GEBUEHREN_VORSTEUER
   }
 
@@ -1233,7 +1259,12 @@
       if (r) r.textContent = e.ok && e.roi != null ? pct(e.roi) : "—";
       if (k !== S.mk) return;
       const lh = root.getElementById("landhinweis");
-      if (lh) { const l = AxxRechner.einkaufsland(S.url); lh.textContent = l !== "de" && !S.ekNetto ? "Einkauf im Ausland (" + l.toUpperCase() + "): Brutto-EK ist Kostenbasis, keine deutsche Vorsteuer" : ""; }
+      if (lh) {
+        const l = AxxRechner.einkaufsland(S.url), teile = [];
+        if (l !== "de" && !S.ekNetto) teile.push("Einkauf im Ausland (" + l.toUpperCase() + "): Brutto-EK ist Kostenbasis, keine deutsche Vorsteuer");
+        if (S.kanal === "fbm" && fbmVersand(k) >= 30) teile.push("⚠ Versand " + eur(fbmVersand(k)) + " eingetragen – wirklich so hoch oder Komma vergessen?");
+        lh.textContent = teile.join(" · ");
+      }
       const erg = root.getElementById("erg"), auf = root.getElementById("aufst");
       if (!e.ok) { if (erg) erg.innerHTML = '<span class="neg">' + esc(e.fehler) + "</span>"; if (auf) auf.innerHTML = ""; return; }
       S.kurz = e.gewinn != null ? e.gewinn : null;
@@ -1258,7 +1289,7 @@
         '<tr><td>− Amazon-Gebühren netto</td><td class="r">' + eurGenau(-e.gebuehrNetto) + "</td></tr>" +
         '<tr><td>− USt auf Gebühren</td><td class="r">' + eurGenau(-e.gebuehrUst) + "</td></tr>" +
         '<tr><td>− USt-Zahllast <span class="mut">(Verkauf ' + e.vkUstSatz + " %" + (S.mk !== "de" ? (e.vkUstModus === "de" ? " DE-USt" : e.kanal === "fba" && !e.efn ? " lokal" : " OSS") : "") + " " + eurGenau(e.vkUst) + " − EK " + eurGenau(vstEk) + " − Gebühren " + eurGenau(vstGeb) + ')</span></td><td class="r">' + eurGenau(-zahllast) + "</td></tr>" +
-        (e.kanal === "fbm" ? '<tr><td>− Versand (FBM)</td><td class="r">' + eurGenau(-e.versand) + "</td></tr>"
+        (e.kanal === "fbm" ? '<tr><td>− Versand (FBM ' + (S.mk === "de" ? "DE" : "EU") + ' netto)</td><td class="r">' + eurGenau(-e.versand) + "</td></tr>"
                            : (e.prep ? '<tr><td>− Prep / Inbound</td><td class="r">' + eurGenau(-e.prep) + "</td></tr>" : "")) +
         '<tr class="sum"><td>Gewinn</td><td class="r ' + (e.gewinn >= 0 ? "pos" : "neg") + '">' + eurGenau(e.gewinn) + "</td></tr></table>" : "") +
         '<div class="sub">Gebühren einzeln</div><table class="fee">' +
@@ -1389,9 +1420,11 @@
     } else {
       const d = r.data;
       S.d = d; S.ekNetto = !!d.ek_netto; S.prep = d.prep || 0; S.ustModus = d.ust_modus || "oss";
+      if (d.fbm_versand_de != null) S.versandDe = Number(d.fbm_versand_de);
+      if (d.fbm_versand_eu != null) S.versandEu = Number(d.fbm_versand_eu);
       MPS.forEach((k) => { const m = d.maerkte[k] || {}; S.vk[k] = m.buybox != null ? m.buybox : null; S.tarif[k] = !!m.efn_vorwahl; });
       if (!(d.maerkte[S.mk] || {}).vorhanden) S.mk = MPS.find((k) => (d.maerkte[k] || {}).vorhanden) || S.mk;
-      const st = await store.get(["axxEk:" + asin, "axxKanal:" + asin, "axxVersandFbm"]);
+      const st = await store.get(["axxEk:" + asin, "axxKanal:" + asin]);
       const v = st["axxEk:" + asin];
       if (!frisch && v && Date.now() - v.ts < 30 * 24 * 3600 * 1000) { S.ek = v.ek; S.menge = v.menge || 1; S.url = v.url || ""; }
       if (S.shop) {                                  // Shop-Produktseite: dieser Shop ist die Bezugsquelle
@@ -1399,7 +1432,6 @@
         if (S.ek == null && S.shop.preis) S.ek = S.shop.preis;
       }
       S.kanal = st["axxKanal:" + asin] === "fbm" ? "fbm" : "fba";
-      if (st.axxVersandFbm != null) S.versand = Number(st.axxVersandFbm);
       frischAnwenden();
       zeichne();
       // Stufe 2: alle Märkte (FR/IT/ES …) nachladen, Eingaben bleiben stehen
@@ -1630,7 +1662,7 @@
   .opt input:not([type]) { width: 40px; padding: 4px 6px; font-size: 12px; }
   .opt { flex-wrap: nowrap; white-space: nowrap; }
   .opt { gap: 6px 6px; flex-wrap: wrap; }
-  .opt input:not([type]) { width: 36px; padding: 4px 5px; }
+  .opt input:not([type]) { width: 54px; padding: 4px 6px; }
   .opt .seg button { padding: 3px 8px; }
   .opt label { gap: 4px; }
   .lz { display: flex; justify-content: space-between; align-items: center; gap: 4px; }

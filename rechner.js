@@ -39,8 +39,9 @@
     if (!m || !m.vorhanden || !d.exakt_abruf || !(vk > 0) || vk > 100000) return false;
     const key = pk(vk);
     if (m.exakt && m.exakt[key]) return false;
-    const lok = m.modell_lokal || m.modell_fbm;
-    if (lok && lok.ok && istExakt(lok, vk)) return false;
+    const lok = m.modell_lokal, fbm = m.modell_fbm;
+    const hatOk = (lok && lok.ok) || (fbm && fbm.ok);
+    if (hatOk && (!lok || !lok.ok || istExakt(lok, vk)) && (!fbm || !fbm.ok || istExakt(fbm, vk))) return false;
     const lk = d.asin + "|" + mk + "|" + key;
     if (laeuft[lk]) return true;
     if (fehlschlag[lk] && Date.now() - fehlschlag[lk] < 60000) return false;
@@ -81,11 +82,12 @@
     const gebuehr = vf * gebuehrNetto;
     const vkNetto = vk / (1 + uVk);
     const vorEk = vkNetto - gebuehr - prep - versand;
+    const neben = prep + versand;
     const nenner = 1 / (1 + uVk) - vf * mod.satz;
     const out = { ok: true, kanal, efn: kanal === "fba" && !!(efn && m.modell_efn), gebuehr, gebuehrNetto,
                   gebuehrUst: (mod.vf - 1) * gebuehrNetto, vorsteuerGebuehren: vf === 1, vkNetto,
                   vkUst: vk - vkNetto, vkUstSatz: satzVk, vkUstModus: modusVk, prep, versand,
-                  maxEk: zuEingabe(Math.max((vorEk - prep * r) / (1 + r), 0)),
+                  maxEk: zuEingabe(Math.max((vorEk - neben * r) / (1 + r), 0)),
                   breakEvenEk: zuEingabe(Math.max(vorEk, 0)),
                   auszahlung: vk - mod.vf * gebuehrNetto,
                   // exakt: Gebuehr stammt von Amazon fuer genau diesen VK; sonst vom Buy-Box-Preis hochgerechnet
@@ -94,15 +96,16 @@
                   aufstellung: aufstellung(m, mod, vk, kanal) };
     if (ek != null && ek > 0) {
       const ekNet = Math.round(vonEingabe(ek) * 100) / 100;
+      const basis = ekNet + neben;
       out.ekNetto = ekNet;
       out.gewinn = vorEk - ekNet;
-      out.roi = (ekNet + prep) > 0 ? out.gewinn / (ekNet + prep) * 100 : null;
+      out.roi = basis > 0 ? out.gewinn / basis * 100 : null;
       out.marge = vkNetto > 0 ? out.gewinn / vkNetto * 100 : null;
       out.breakEvenVk = nenner > 0 ? (vf * mod.fix + ekNet + prep + versand) / nenner : null;
       const n = Math.max(1, Math.floor(o.menge || 1));
       out.menge = n;
       out.gesamt = out.gewinn * n;
-      out.einsatz = (ekNet + prep) * n;
+      out.einsatz = basis * n;
     }
     return out;
   }
@@ -126,6 +129,8 @@
         ? zeilen.reduce((s, z) => s + z[1], 0) : prov + absch;
       zeilen.push(["Digitalsteuer " + Math.round(dstSatz * 100) + " %", dstBasis * dstSatz]);
     }
+    const lager = betrag("Lagerkosten");
+    if (lager) zeilen.push(["Lagerkosten", lager]);
     return zeilen;
   }
 
@@ -133,12 +138,14 @@
   function exaktHolenMehr(api, d, mk, preise, fertig) {
     const m = d && d.maerkte && d.maerkte[mk];
     if (!m || !m.vorhanden || !d.exakt_abruf) return false;
-    const lok = m.modell_lokal || m.modell_fbm;
+    const lok = m.modell_lokal, fbm = m.modell_fbm;
+    const hatOk = (lok && lok.ok) || (fbm && fbm.ok);
     const offen = [];
     (preise || []).forEach((vk) => {
       if (!(vk > 0) || vk > 100000) return;
       const key = pk(vk), lk = d.asin + "|" + mk + "|" + key;
-      if ((m.exakt && m.exakt[key]) || (lok && lok.ok && istExakt(lok, vk)) || laeuft[lk]) return;
+      const schonExakt = hatOk && (!lok || !lok.ok || istExakt(lok, vk)) && (!fbm || !fbm.ok || istExakt(fbm, vk));
+      if ((m.exakt && m.exakt[key]) || schonExakt || laeuft[lk]) return;
       if (fehlschlag[lk] && Date.now() - fehlschlag[lk] < 60000) return;
       if (!offen.includes(key)) offen.push(key);
     });

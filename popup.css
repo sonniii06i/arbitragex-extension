@@ -345,7 +345,7 @@ body { width: 400px; font-size: 12.5px; }
 .pp-reiterzeile { margin: 4px 0 8px; }
 .pp-reiter { padding: 6px 0 7px; }
 .pp-opt { flex-wrap: wrap; gap: 6px 8px; white-space: nowrap; }
-.pp-opt input:not([type]) { width: 42px; }
+.pp-opt input:not([type]) { width: 54px; }
 .pp-opt label { gap: 4px; }
 .pp-tiles { margin: 7px 0; padding: 8px 12px; }
 .axx-buygrid .axx-sku { grid-column: 1 / -1; }
