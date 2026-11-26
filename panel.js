@@ -1252,6 +1252,16 @@
           if (S.mk === "de") S.versandDe = val; else S.versandEu = val;
           rechnen();
         };
+        $("versand").onchange = () => {
+          const key = S.mk === "de" ? "fbm_versand_de" : "fbm_versand_eu";
+          const val = S.mk === "de" ? S.versandDe : S.versandEu;
+          if (val >= 0 && val <= 500) {
+            api("/api/ext/einstellungen", "POST", { [key]: val });
+            if (S.d) S.d[key] = val;
+            const ef = root.getElementById(S.mk === "de" ? "einst-fbm-de" : "einst-fbm-eu");
+            if (ef) ef.value = String(val).replace(".", ",");
+          }
+        };
       }
       $("ziel").oninput = (e) => { const v = num(e.target.value); if (v == null) return; S.ziel = v; store.set({ axxZielRoi: v }); rechnen(); };
       const t = $("tarif");
@@ -1379,7 +1389,12 @@
   function einstellungenVerdrahten(root) {
     const det = root.getElementById("einst");
     if (det) det.ontoggle = () => { S.einstAuf = det.open; };
-    root.querySelectorAll('input[name="modus"]').forEach((r) => r.onchange = () => { S.modus = r.value; store.set({ axxModus: r.value }); });
+    root.querySelectorAll('input[name="modus"]').forEach((r) => r.onchange = () => {
+      S.modus = r.value;
+      store.set({ axxModus: r.value });
+      const ep = root.getElementById("einst-panel");
+      if (ep) ep.disabled = (S.modus === "einkauf");
+    });
     const p = root.getElementById("einst-panel");
     if (p) p.onchange = () => store.set({ axxPanel: p.checked });
     const pr = root.getElementById("einst-prep");
@@ -1632,16 +1647,19 @@
           S.ekQuelle = acc.quelle || "account";
           if (v && v.menge > 1) S.menge = v.menge;
           if (v && v.url) S.url = v.url;
+          else if (acc.source_url) S.url = acc.source_url;
           store.set({ ["axxEk:" + asin]: { ek: S.ek, ekNetto: !!S.ekNetto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle, ts: Math.max(accTs, Date.now()) } });
         } else if (lokalDa) {
           S.ek = Number(v.ek);
           if (typeof v.ekNetto === "boolean") S.ekNetto = v.ekNetto;
           S.menge = v.menge || 1;
-          S.url = v.url || "";
+          S.url = v.url || (acc && acc.source_url) || "";
           S.ekQuelle = v.quelle || "manuell";
         } else if (v && v.url) {
           S.url = v.url;
           S.menge = v.menge || 1;
+        } else if (acc && acc.source_url) {
+          S.url = acc.source_url;
         }
       }
       if (S.shop) {                                  // Shop-Produktseite: dieser Shop ist die Bezugsquelle

@@ -614,9 +614,11 @@ async function profitStart() {
         f.value = String(acc.eingabe).replace(".", ",");
         delete f.dataset.shoppreis;
       }
+      const uEl = document.getElementById("axx-b-url");
+      if (uEl && !uEl.value && acc.source_url) uEl.value = acc.source_url;
       chrome.storage.local.set({ ["axxEk:" + d.asin]: {
         ek: Number(acc.eingabe), ekNetto: !!state.ekNetto,
-        menge: (v && v.menge) || 1, url: (v && v.url) || "", quelle: acc.quelle || "account", ts: Math.max(accTs, Date.now())
+        menge: (v && v.menge) || 1, url: (v && v.url) || acc.source_url || "", quelle: acc.quelle || "account", ts: Math.max(accTs, Date.now())
       } });
     } else if (lokalDa) {
       if (typeof v.ekNetto === "boolean") state.ekNetto = v.ekNetto;
@@ -624,6 +626,11 @@ async function profitStart() {
         f.value = String(v.ek).replace(".", ",");
         delete f.dataset.shoppreis;
       }
+      const uEl = document.getElementById("axx-b-url");
+      if (uEl && !uEl.value && (v.url || (acc && acc.source_url))) uEl.value = v.url || acc.source_url;
+    } else if (acc && acc.source_url) {
+      const uEl = document.getElementById("axx-b-url");
+      if (uEl && !uEl.value) uEl.value = acc.source_url;
     }
   } catch (e) { }
   renderProfit();
@@ -668,13 +675,26 @@ function renderProfit() {
     return '<button class="pp-reiter' + (mk === state.mk ? " an" : "") + (m.vorhanden ? "" : " aus") + '" data-reiter="' + mk + '">' +
       FLAG[mk] + " " + mk.toUpperCase() + "</button>";
   }).join("");
+  const ekTagHtml = () => {
+    const acc = d && d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
+    const curEk = num((document.getElementById("axx-b-cost") || {}).value);
+    const L = { einkauf: "Einkauf", zeitraum: "Zeitraum", mail: "Mail", bestellung: "Bestellung", produkt: "Account", asin: "Account", account: "Account" };
+    if (acc) {
+      const lab = L[acc.quelle] || "Account";
+      const dat = acc.datum ? " (" + new Date(acc.datum * 1000).toLocaleDateString("de-DE") + ")" : "";
+      const gleich = curEk != null && Math.abs(curEk - Number(acc.eingabe)) < 0.01 && (!!state.ekNetto === !acc.eingabe_brutto);
+      if (gleich) return '<span class="ektag ok" title="Gespeicherter EK aus deinem Arbitragex-Konto: ' + esc(lab) + dat + ' – jederzeit überschreibbar">' + esc(lab) + "</span>";
+      return '<button type="button" class="ektag reset" id="axx-ek-reset" title="Gespeicherten Konto-EK (' + eur(acc.eingabe) + (acc.eingabe_brutto ? " brutto" : " netto") + ", " + esc(lab) + dat + ') übernehmen">↺ ' + esc(lab) + "</button>";
+    }
+    return curEk != null ? '<span class="ektag" title="Für diese ASIN dauerhaft im Browser gespeichert">gemerkt</span>' : "";
+  };
   box.innerHTML =
     '<div class="pp-reiterzeile">' + reiter + "</div>" +
     // Freigabe, BSR, Angebote und Sales über den Eingaben — derselbe Baustein wie im Panel (rechner.js)
     AxxRechner.fakten(d, state.mk, state.mk === state.seitenMk ? (state.page && state.page.gekauft) : null, BASE) +
     '<div class="pp-box">' +
       '<div class="pp-g3">' +
-        '<label>EK €<input id="axx-pf-ek" inputmode="decimal" placeholder="0,00" value="' + ekWert + '"></label>' +
+        '<label><span class="lz">EK €<span id="axx-ektag">' + ekTagHtml() + '</span></span><input id="axx-pf-ek" inputmode="decimal" placeholder="0,00" value="' + ekWert + '"></label>' +
         '<label><span class="lz">VK € ' + state.mk.toUpperCase() +
           '<span class="ustg">' + AxxRechner.ustKnoepfe(d, state.mk, state.kanal || "fba", state.tarif[state.mk], state.ustModus) + '</span></span><input id="pp-vk" inputmode="decimal" placeholder="VK eintragen" value="' +
           (vkMk != null ? String(vkMk.toFixed(2)).replace(".", ",") : "") + '"></label>' +
@@ -741,8 +761,35 @@ function renderProfit() {
       if (state.mk === "de") state.versandDe = val; else state.versandEu = val;
       profitRechnen();
     });
+    $("pp-versand").addEventListener("change", () => {
+      const key = state.mk === "de" ? "fbm_versand_de" : "fbm_versand_eu";
+      const val = state.mk === "de" ? state.versandDe : state.versandEu;
+      if (val >= 0 && val <= 500) {
+        api("/api/ext/einstellungen", "POST", { [key]: val });
+        if (state.profit) state.profit[key] = val;
+      }
+    });
   }
-  $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; ekMerken(); profitRechnen(); });
+  const ekTagUpd = () => {
+    const tg = $("axx-ektag");
+    if (!tg) return;
+    tg.innerHTML = ekTagHtml();
+    const rb = $("axx-ek-reset");
+    if (rb) rb.addEventListener("click", () => {
+      const acc = state.profit && state.profit.eigener_ek && state.profit.eigener_ek.eingabe > 0 ? state.profit.eigener_ek : null;
+      if (!acc) return;
+      state.ekNetto = !acc.eingabe_brutto;
+      const s = String(acc.eingabe).replace(".", ",");
+      if ($("axx-b-cost")) { $("axx-b-cost").value = s; delete $("axx-b-cost").dataset.manuell; }
+      if ($("axx-pf-ek")) $("axx-pf-ek").value = s;
+      if ($("axx-pf-netto")) $("axx-pf-netto").checked = state.ekNetto;
+      ekMerken();
+      profitRechnen();
+      ekTagUpd();
+    });
+  };
+  ekTagUpd();
+  $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; ekMerken(); ekTagUpd(); profitRechnen(); });
   if ($("axx-pf-prep")) {
     $("axx-pf-prep").addEventListener("input", (e) => { const v = num(e.target.value); state.prep = v == null ? 0 : v; profitRechnen(); });
     $("axx-pf-prep").addEventListener("change", () => {
@@ -759,7 +806,7 @@ function renderProfit() {
   // Zwei EK-Felder (Profit oben, Einkauf unten) zeigen immer denselben Wert
   const pfEk = $("axx-pf-ek"), bEk = $("axx-b-cost");
   if (pfEk && bEk) {
-    pfEk.addEventListener("input", () => { bEk.value = pfEk.value; profitRechnen(); });
+    pfEk.addEventListener("input", () => { bEk.value = pfEk.value; ekTagUpd(); profitRechnen(); });
     if (!bEk.dataset.pfsync) { bEk.dataset.pfsync = "1"; bEk.addEventListener("input", () => { const p = $("axx-pf-ek"); if (p) p.value = bEk.value; }); }
     pfEk.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
   }
