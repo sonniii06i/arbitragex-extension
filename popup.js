@@ -491,9 +491,22 @@ async function saveInner() {
     : "Listing läuft";
   res.innerHTML = '<div class="axx-res ok">Einkauf registriert · ' + qty + " × " + eur(cost) +
     (r.data && r.data.sku ? " · SKU " + esc(r.data.sku) : "") +
-    "<small>" + listTxt + prepTxt + ". Status siehst du in Arbitragex → Einkäufe.</small></div>" +
+    "<small>" + listTxt + prepTxt + ". EK im Konto gespeichert – Status in Arbitragex → Einkäufe.</small></div>" +
     (listing && listing.listing ? renderListing(listing.listing) : "");
-  document.getElementById("axx-b-cost").value = "";
+  // 1.9.40: Registrierten EK NICHT löschen – im Browser & Account-Cache sofort für diese ASIN merken
+  if (state.data && state.data.asin) {
+    try {
+      chrome.storage.local.set({ ["axxEk:" + state.data.asin]: {
+        ek: cost, ekNetto: !!state.ekNetto, menge: qty || 1, url: url || "", quelle: "einkauf", ts: Date.now()
+      } });
+    } catch (e) { }
+  }
+  if (state.profit) {
+    state.profit.eigener_ek = Object.assign({}, state.profit.eigener_ek || {}, {
+      eingabe: cost, eingabe_brutto: !state.ekNetto, quelle: "einkauf",
+      datum: Date.now() / 1000, sku: (r.data && r.data.sku) || null
+    });
+  }
   skuNachSave(r.data && r.data.sku);
   showResult();
 }
@@ -586,8 +599,32 @@ async function profitStart() {
   state.versandDe = d.fbm_versand_de != null ? Number(d.fbm_versand_de) : 4.99;
   state.versandEu = d.fbm_versand_eu != null ? Number(d.fbm_versand_eu) : 14.99;
   try {
-    const st = await chrome.storage.local.get(["axxKanal:" + d.asin]);
+    const st = await chrome.storage.local.get(["axxKanal:" + d.asin, "axxEk:" + d.asin]);
     if (st["axxKanal:" + d.asin] === "fbm") state.kanal = "fbm";
+    // 1.9.40: Account-EK (d.eigener_ek) und dauerhaften lokalen EK abgleichen (kein 30-Tage-Verfall)
+    const v = st["axxEk:" + d.asin];
+    const acc = d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
+    const accTs = acc && acc.datum ? Number(acc.datum) * 1000 : 0;
+    const lokalDa = v && v.ek != null && v.ek > 0;
+    const kontoNeuer = acc && (!lokalDa || accTs > (Number(v.ts) || 0) + 5000);
+    const f = document.getElementById("axx-b-cost");
+    if (kontoNeuer) {
+      state.ekNetto = !acc.eingabe_brutto;
+      if (f && (!f.value || f.dataset.shoppreis || !f.dataset.manuell)) {
+        f.value = String(acc.eingabe).replace(".", ",");
+        delete f.dataset.shoppreis;
+      }
+      chrome.storage.local.set({ ["axxEk:" + d.asin]: {
+        ek: Number(acc.eingabe), ekNetto: !!state.ekNetto,
+        menge: (v && v.menge) || 1, url: (v && v.url) || "", quelle: acc.quelle || "account", ts: Math.max(accTs, Date.now())
+      } });
+    } else if (lokalDa) {
+      if (typeof v.ekNetto === "boolean") state.ekNetto = v.ekNetto;
+      if (f && (!f.value || f.dataset.shoppreis)) {
+        f.value = String(v.ek).replace(".", ",");
+        delete f.dataset.shoppreis;
+      }
+    }
   } catch (e) { }
   renderProfit();
   const ekFeld = document.getElementById("axx-pf-ek");
@@ -705,7 +742,7 @@ function renderProfit() {
       profitRechnen();
     });
   }
-  $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; profitRechnen(); });
+  $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; ekMerken(); profitRechnen(); });
   if ($("axx-pf-prep")) {
     $("axx-pf-prep").addEventListener("input", (e) => { const v = num(e.target.value); state.prep = v == null ? 0 : v; profitRechnen(); });
     $("axx-pf-prep").addEventListener("change", () => {
@@ -732,7 +769,17 @@ function renderProfit() {
   });
   ["axx-b-cost", "axx-b-url", "axx-b-qty", "axx-pf-ek", "pp-menge"].forEach((id) => {
     const el = $(id);
-    if (el && !el.dataset.merk) { el.dataset.merk = "1"; el.addEventListener("change", ekMerken); el.addEventListener("input", () => { if (el.dataset.shoppreis) delete el.dataset.shoppreis; }); }
+    if (el && !el.dataset.merk) {
+      el.dataset.merk = "1";
+      el.addEventListener("change", ekMerken);
+      el.addEventListener("input", (ev) => {
+        if (el.dataset.shoppreis) delete el.dataset.shoppreis;
+        if (ev && ev.isTrusted) {
+          if (bEk && (id === "axx-b-cost" || id === "axx-pf-ek")) bEk.dataset.manuell = "1";
+          ekMerken();
+        }
+      });
+    }
   });
   profitRechnen();
 }
@@ -964,18 +1011,19 @@ function einstellungWire() {
   });
 }
 
-/* EK, den man im Panel oder Popup eingetippt hat, bleibt je ASIN 30 Tage stehen (Betreiber 27.10.:
-   „nicht immer wieder raus-tappen“). Panel und Popup teilen sich axxEk:<asin>. */
-const EK_MERKEN_MS = 30 * 24 * 3600 * 1000;
+/* EK, den man im Panel oder Popup eingetippt hat, bleibt je ASIN dauerhaft gespeichert (kein 30-Tage-Verfall)
+   und gleicht sich zusätzlich mit dem Konto-EK (d.eigener_ek) ab. Panel und Popup teilen sich axxEk:<asin>. */
 function ekMerken() {
   try {
     const asin = state.data && state.data.asin;
     if (!asin) return;
+    const key = "axxEk:" + asin;
     const ek = num((document.getElementById("axx-b-cost") || {}).value);
-    if (ek == null) return;
-    chrome.storage.local.set({ ["axxEk:" + asin]: { ek, ts: Date.now(),
+    const url = ((document.getElementById("axx-b-url") || {}).value || "").trim();
+    if (ek == null && !url) { chrome.storage.local.remove(key); return; }
+    chrome.storage.local.set({ [key]: { ek, ekNetto: !!state.ekNetto, ts: Date.now(), quelle: "manuell",
       menge: parseInt((document.getElementById("axx-b-qty") || {}).value, 10) || 1,
-      url: ((document.getElementById("axx-b-url") || {}).value || "").trim() } });
+      url } });
   } catch (e) { }
 }
 
@@ -984,10 +1032,12 @@ async function ekAusPanel() {
     const k = "axxEk:" + state.data.asin;
     const st = await chrome.storage.local.get([k]);
     const v = st && st[k];
-    if (!v || Date.now() - v.ts > EK_MERKEN_MS) return;
+    if (!v) return;
     const f = document.getElementById("axx-b-cost");
     if (f && (!f.value || f.dataset.shoppreis) && v.ek != null) {      // gemerkter EK schlägt den Shop-Preis
       f.value = String(v.ek).replace(".", ",");
+      delete f.dataset.shoppreis;
+      if (typeof v.ekNetto === "boolean") state.ekNetto = v.ekNetto;
       f.dispatchEvent(new Event("input"));
     }
     const u = document.getElementById("axx-b-url");

@@ -21,11 +21,24 @@
   const BASE = "https://arbitragex.de";
   const CHIP_ID = "axx-launch";
   const SHOP_AUTOMATIK = false;                     // Panel auf Shop-Seiten nur noch über das Popup                    // Chip aus content.js, solange das Panel da ist ausgeblendet
-  const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, prep: 0, ziel: 20,
+  const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, ekQuelle: null, prep: 0, ziel: 20,
               menge: 1, kanal: "fba", versandDe: 4.99, versandEu: 14.99, zu: false, docked: true, pos: null, host: null, root: null,
               fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false, chartQuelle: "eigen",
               kurz: null, modus: "profit", einstAuf: false, offen: {},
               kauf: { d: null, sku: null, cond: null, chan: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
+  const EK_QUELL_LABEL = { einkauf: "Einkauf", zeitraum: "Zeitraum", mail: "Mail", bestellung: "Bestellung", produkt: "Account", asin: "Account", account: "Account" };
+  function ekTagHtml() {
+    const acc = S.d && S.d.eigener_ek && S.d.eigener_ek.eingabe > 0 ? S.d.eigener_ek : null;
+    if (acc) {
+      const lab = EK_QUELL_LABEL[acc.quelle] || "Account";
+      const dat = acc.datum ? " (" + new Date(acc.datum * 1000).toLocaleDateString("de-DE") + ")" : "";
+      const gleich = S.ek != null && Math.abs(S.ek - Number(acc.eingabe)) < 0.01 && (!!S.ekNetto === !acc.eingabe_brutto);
+      if (gleich) return '<span class="ektag ok" title="Gespeicherter EK aus deinem Arbitragex-Konto: ' + esc(lab) + dat + ' – jederzeit überschreibbar">' + esc(lab) + "</span>";
+      return '<button type="button" class="ektag reset" id="ekReset" title="Gespeicherten Konto-EK (' + eur(acc.eingabe) + (acc.eingabe_brutto ? " brutto" : " netto") + ", " + esc(lab) + dat + ') übernehmen">↺ ' + esc(lab) + "</button>";
+    }
+    if (S.ek != null) return '<span class="ektag" title="Für diese ASIN dauerhaft im Browser gespeichert">gemerkt</span>';
+    return "";
+  }
   const secOffen = (k) => {
     if (k === "kauf" && S.kaufMeldung) return true;
     if (S.offen && typeof S.offen[k] === "boolean") return S.offen[k];
@@ -599,7 +612,7 @@
       AxxRechner.fakten(d, mk, mk === seitenMarkt() ? badgeSeite() : null, BASE) +
       '<div class="eingabe"><div class="ehead">Kalkulation</div>' +
       '<div class="ein">' +
-        '<label>EK €<input id="ek" inputmode="decimal" placeholder="0,00"></label>' +
+        '<label><span class="lz">EK €<span id="ektag">' + ekTagHtml() + '</span></span><input id="ek" inputmode="decimal" placeholder="0,00"></label>' +
         '<label><span class="lz">VK € ' + mk.toUpperCase() +
           // USt-Umschalter sitzt im Feldtitel (eigene Zeile kostete den Platz für „Einkauf registrieren“)
           '<span class="ustg">' + AxxRechner.ustKnoepfe(S.d, mk, S.kanal, S.tarif[mk], S.ustModus) + '</span></span><input id="vk" inputmode="decimal" value="' +
@@ -1202,10 +1215,28 @@
     const ek = $("ek");
     if (ek) {
       if (S.ek != null) ek.value = String(S.ek).replace(".", ",");
-      ek.oninput = () => { S.ek = num(ek.value); rechnen(); merkeEk(); };
+      const ekTagUpd = () => {
+        const tg = $("ektag");
+        if (tg) { tg.innerHTML = ekTagHtml(); const rb = $("ekReset"); if (rb) rb.onclick = ekReset; }
+      };
+      const ekReset = () => {
+        const acc = S.d && S.d.eigener_ek && S.d.eigener_ek.eingabe > 0 ? S.d.eigener_ek : null;
+        if (!acc) return;
+        S.ek = Number(acc.eingabe);
+        S.ekNetto = !acc.eingabe_brutto;
+        S.ekQuelle = acc.quelle || "account";
+        ek.value = String(S.ek).replace(".", ",");
+        if ($("netto")) $("netto").checked = S.ekNetto;
+        merkeEk();
+        rechnen();
+        ekTagUpd();
+      };
+      const rb0 = $("ekReset");
+      if (rb0) rb0.onclick = ekReset;
+      ek.oninput = () => { S.ek = num(ek.value); S.ekQuelle = S.ek != null ? "manuell" : null; rechnen(); merkeEk(); ekTagUpd(); };
       $("vk").oninput = () => { S.vk[S.mk] = num($("vk").value); rechnen(); };
       $("menge").oninput = () => { const v = num($("menge").value); S.menge = v && v > 0 ? Math.floor(v) : 1; rechnen(); merkeEk(); };
-      $("netto").onchange = (e) => { S.ekNetto = e.target.checked; rechnen(); };
+      $("netto").onchange = (e) => { S.ekNetto = e.target.checked; rechnen(); merkeEk(); ekTagUpd(); };
       $("url").oninput = (e) => { S.url = e.target.value.trim(); rechnen(); merkeEk(); };
       if ($("bestellnr")) $("bestellnr").oninput = (e) => { S.kauf.nr = e.target.value; };
       if ($("listvk")) $("listvk").oninput = (e) => { S.kauf.vk = e.target.value; };
@@ -1319,8 +1350,16 @@
     if (r.data && r.data.auto === false && r.data.id) await api("/api/purchases/export", "POST", { ids: [r.data.id] });
     const chTxt = (r.data && r.data.list_channel === "FBM") ? "FBM" : "FBA";
     const listTxt = (r.data && r.data.listing_enabled === false) ? "Amazon-Listing ist in den Einstellungen aus" : chTxt + "-Listing läuft";
+    S.ekQuelle = "einkauf";
+    merkeEk();
+    if (S.d) {
+      S.d.eigener_ek = Object.assign({}, S.d.eigener_ek || {}, {
+        eingabe: S.ek, eingabe_brutto: !S.ekNetto, quelle: "einkauf",
+        datum: Date.now() / 1000, sku: (r.data && r.data.sku) || (S.d.eigener_ek && S.d.eigener_ek.sku) || null
+      });
+    }
     S.kaufMeldung = '<div class="kok">Einkauf registriert: ' + (S.menge || 1) + " × " + eur(S.ek) + (r.data && r.data.sku ? ", SKU " + esc(r.data.sku) : "") +
-      "<small>" + listTxt + ((r.data && r.data.prep_connected && !r.data.announce_off) ? ", Prep angemeldet" : "") + ". Status siehst du in Arbitragex unter Einkäufe.</small></div>";
+      "<small>" + listTxt + ((r.data && r.data.prep_connected && !r.data.announce_off) ? ", Prep angemeldet" : "") + ". EK im Konto gespeichert – Status in Arbitragex unter Einkäufe.</small></div>";
     if (r.data && r.data.sku) { S.kauf.d = null; S.kauf.sku = r.data.sku; skusLaden(S.asin); }   // neue SKU erscheint in der Liste
     zeichne();
   }
@@ -1371,7 +1410,13 @@
   }
 
   function merkeEk() {
-    if ((S.ek != null || S.url) && S.asin) store.set({ ["axxEk:" + S.asin]: { ek: S.ek, menge: S.menge, url: S.url || "", ts: Date.now() } });
+    if (!S.asin) return;
+    const key = "axxEk:" + S.asin;
+    if (S.ek == null && !S.url) {
+      try { chrome.storage.local.remove(key); } catch (e) { }
+      return;
+    }
+    store.set({ [key]: { ek: S.ek, ekNetto: !!S.ekNetto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle || "manuell", ts: Date.now() } });
   }
 
   function opts(k, kanal) {
@@ -1574,10 +1619,34 @@
       if (!(d.maerkte[S.mk] || {}).vorhanden) S.mk = MPS.find((k) => (d.maerkte[k] || {}).vorhanden) || S.mk;
       const st = await store.get(["axxEk:" + asin, "axxKanal:" + asin]);
       const v = st["axxEk:" + asin];
-      if (!frisch && v && Date.now() - v.ts < 30 * 24 * 3600 * 1000) { S.ek = v.ek; S.menge = v.menge || 1; S.url = v.url || ""; }
+      const acc = d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
+      const accTs = acc && acc.datum ? Number(acc.datum) * 1000 : 0;
+      if (!frisch) {
+        // 1.9.40: Dauerhafter EK-Abgleich zwischen Arbitragex-Konto (d.eigener_ek) und lokalem Input (kein 30-Tage-Verfall).
+        // Neuerer Konto-EK (z. B. neuer Einkauf in App/anderem Browser) gewinnt; eigene Eingabe im Feld überschreibt lokal jederzeit.
+        const lokalDa = v && v.ek != null && v.ek > 0;
+        const kontoNeuer = acc && (!lokalDa || accTs > (Number(v.ts) || 0) + 5000);
+        if (kontoNeuer) {
+          S.ek = Number(acc.eingabe);
+          S.ekNetto = !acc.eingabe_brutto;
+          S.ekQuelle = acc.quelle || "account";
+          if (v && v.menge > 1) S.menge = v.menge;
+          if (v && v.url) S.url = v.url;
+          store.set({ ["axxEk:" + asin]: { ek: S.ek, ekNetto: !!S.ekNetto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle, ts: Math.max(accTs, Date.now()) } });
+        } else if (lokalDa) {
+          S.ek = Number(v.ek);
+          if (typeof v.ekNetto === "boolean") S.ekNetto = v.ekNetto;
+          S.menge = v.menge || 1;
+          S.url = v.url || "";
+          S.ekQuelle = v.quelle || "manuell";
+        } else if (v && v.url) {
+          S.url = v.url;
+          S.menge = v.menge || 1;
+        }
+      }
       if (S.shop) {                                  // Shop-Produktseite: dieser Shop ist die Bezugsquelle
         if (!S.url) S.url = S.shop.url;
-        if (S.ek == null && S.shop.preis) S.ek = S.shop.preis;
+        if (S.ek == null && S.shop.preis) { S.ek = S.shop.preis; S.ekQuelle = "shop"; }
       }
       S.kanal = st["axxKanal:" + asin] === "fbm" ? "fbm" : "fba";
       frischAnwenden();
@@ -1874,6 +1943,11 @@
   .opt input:not([type]) { width: 50px; padding: 3px 5px; font-size: 11.5px; }
   .opt .seg button { padding: 3px 8px; }
   .lz { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
+  .ektag { display: inline-flex; align-items: center; border: 1px solid var(--linie); background: var(--flaeche); color: var(--leise);
+           border-radius: 4px; padding: 0 4px; font-size: 9px; font-weight: 600; line-height: 14px; white-space: nowrap; }
+  .ektag.ok { color: var(--plus); background: var(--plus-bg); border-color: var(--plus-bd); }
+  .ektag.reset { cursor: pointer; color: var(--akzent); background: var(--akzent-bg); border-color: var(--akzent-bd); }
+  .ektag.reset:hover { border-color: var(--akzent); background: #dff0f3; }
   .ustk { border: 1px solid var(--rand); background: var(--flaeche); color: var(--tinte); border-radius: 4px; padding: 0 4px; font-size: 9.5px; font-weight: 600; line-height: 14px; cursor: pointer; }
   .ustk:hover { background: var(--akzent-bg); border-color: var(--akzent); color: var(--akzent); }
   .ustg { display: inline-flex; gap: 2px; }
