@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Arbitragex – Profit-Rechner für Amazon-Verkäufer (FBA & FBM)",
-  "version": "1.9.38",
+  "version": "1.9.39",
   "description": "Kostenloser Profit-Rechner für Amazon-Verkäufer: Gewinn, ROI und Max-EK mit Amazons Gebühren direkt auf der Produktseite.",
   "permissions": [
     "storage",
