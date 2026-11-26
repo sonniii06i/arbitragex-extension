@@ -22,8 +22,8 @@
   const CHIP_ID = "axx-launch";
   const SHOP_AUTOMATIK = false;                     // Panel auf Shop-Seiten nur noch über das Popup                    // Chip aus content.js, solange das Panel da ist ausgeblendet
   const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, prep: 0, ziel: 20,
-              menge: 1, kanal: "fba", versandDe: 4.99, versandEu: 14.99, zu: false, pos: null, host: null, root: null,
-              fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false,
+              menge: 1, kanal: "fba", versandDe: 4.99, versandEu: 14.99, zu: false, docked: true, pos: null, host: null, root: null,
+              fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false, chartQuelle: "eigen",
               kurz: null, modus: "profit", einstAuf: false,
               kauf: { d: null, sku: null, cond: null, chan: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
   const fbmVersand = (k) => (k || S.mk) === "de" ? S.versandDe : S.versandEu;
@@ -361,16 +361,51 @@
              zeilen: (m.data && m.data.zeilen) || 0 };
   }
 
-  /* --- Aufbau ------------------------------------------------------------- */
+  /* --- Aufbau (1.9.38: SellerAmp-Verankerung rechts auf Amazon-Produktseiten, schwebend auf Non-Amazon-Seiten) --- */
+  const DOCK_STYLE_ID = "axx-dock-style";
+  function dockZiel() {
+    if (!IST_AMAZON || S.zu || !S.docked || window.innerWidth < 960) return null;
+    return document.getElementById("rightCol") || document.getElementById("desktop_buybox") || document.getElementById("buybox");
+  }
+  function istGedockt() { return !!dockZiel(); }
+  function dockStilAus() {
+    const st = document.getElementById(DOCK_STYLE_ID);
+    if (st) st.remove();
+  }
+  function dockStilAn(ziel) {
+    if (!ziel || ziel.id !== "rightCol" || window.innerWidth < 1160) { dockStilAus(); return; }
+    if (document.getElementById(DOCK_STYLE_ID)) return;
+    const cs = window.getComputedStyle(ziel);
+    const wIst = ziel.getBoundingClientRect().width || parseFloat(cs.width) || 0;
+    const zielW = 344;
+    let css = "";
+    if (wIst > 0 && wIst < zielW - 8) {
+      const mr = parseFloat(cs.marginRight) || 0;
+      const diff = Math.round(zielW - wIst);
+      if (mr < -100 && ziel.parentElement) {
+        // Klassisches Amazon-Float-Layout (#ppd / #dp-container mit padding-right + negativem margin-right)
+        const pId = ziel.parentElement.id;
+        const pPad = parseFloat(window.getComputedStyle(ziel.parentElement).paddingRight) || Math.abs(mr);
+        css = "#rightCol{width:" + zielW + "px!important;margin-right:-" + Math.round(Math.abs(mr) + diff) + "px!important;box-sizing:border-box!important}" +
+          (pId ? "#" + pId + "{padding-right:" + Math.round(pPad + diff) + "px!important}" : "");
+      } else {
+        css = "#rightCol{width:" + zielW + "px!important;min-width:" + zielW + "px!important;flex:0 0 " + zielW + "px!important;box-sizing:border-box!important}";
+      }
+    }
+    if (!css) return;
+    const st = document.createElement("style");
+    st.id = DOCK_STYLE_ID;
+    st.textContent = css;
+    document.head ? document.head.appendChild(st) : document.documentElement.appendChild(st);
+  }
   function host() {
     if (S.host) return S.root;
     S.host = document.createElement("div");
     S.host.id = "axx-panel-host";
-    lage();
     S.root = S.host.attachShadow({ mode: "open" });
     S.root.innerHTML = "<style>" + CSS + '</style><div class="p" id="p"></div><div class="cmodal" id="cmodal" hidden></div>';
-    lage();
     document.documentElement.appendChild(S.host);
+    lage();
     // Chip aus content.js ausblenden — das minimierte Panel IST jetzt die Leiste
     if (!document.getElementById("axx-panel-chipaus")) {
       const st = document.createElement("style");
@@ -380,10 +415,22 @@
     }
     return S.root;
   }
-  // Das offene Panel endet immer 12 px über dem unteren Fensterrand (vorher feste Höhe ab 110 px:
-  // der untere Teil lag außerhalb des Fensters und ließ sich nicht erreichen).
+  // Das offene schwebende Panel endet immer 12 px über dem unteren Fensterrand.
+  // Auf Amazon-Produktseiten verankert es sich wie SellerAmp oben in #rightCol und scrollt sauber mit der Seite.
   const OBEN_STD = 64, MIN_HOEHE = 360;
   function lage() {
+    if (!S.host) return;
+    const ziel = dockZiel();
+    const el = S.root && S.root.getElementById("p");
+    if (ziel) {
+      dockStilAn(ziel);
+      if (S.host.parentElement !== ziel) ziel.insertBefore(S.host, ziel.firstChild);
+      S.host.style.cssText = "position:relative;display:block;width:100%;margin:0 0 12px 0;z-index:20;box-sizing:border-box;";
+      if (el) { el.classList.add("docked"); el.style.maxHeight = ""; }
+      return;
+    }
+    dockStilAus();
+    if (S.host.parentElement !== document.documentElement) document.documentElement.appendChild(S.host);
     const p = S.zu ? S.posZu : S.pos;
     let oben = OBEN_STD;
     if (!S.zu && p && p.top != null) oben = Math.max(8, Math.min(p.top, window.innerHeight - MIN_HOEHE));
@@ -391,11 +438,14 @@
       (S.zu ? (p && p.left != null ? "left:" + p.left + "px;top:" + p.top + "px;" : "right:22px;bottom:22px;")
             : (p && p.left != null ? "left:" + Math.max(0, Math.min(p.left, window.innerWidth - 120)) + "px;top:" + oben + "px;"
                                    : "right:14px;top:" + oben + "px;"));
-    const el = S.root && S.root.getElementById("p");
-    if (el) el.style.maxHeight = S.zu ? "" : Math.max(240, window.innerHeight - oben - 12) + "px";
+    if (el) {
+      el.classList.remove("docked");
+      el.style.maxHeight = S.zu ? "" : Math.max(240, window.innerHeight - oben - 12) + "px";
+    }
   }
   window.addEventListener("resize", () => { if (S.host) lage(); });
   function entfernen() {
+    dockStilAus();
     if (S.host) { S.host.remove(); S.host = null; S.root = null; }
     const st = document.getElementById("axx-panel-chipaus");
     if (st) st.remove();
@@ -403,22 +453,27 @@
 
   function zeichne() {
     const root = host();
-    lage();
     const p = root.getElementById("p");
     if (S.zu) {
       S.chartGross = false;
       const cm = root.getElementById("cmodal");
       if (cm) { cm.hidden = true; cm.innerHTML = ""; }
       p.className = "p zu";
+      lage();
       p.innerHTML = leiste();
       kopierbar(root);
       root.getElementById("auf").onclick = () => { S.zu = false; store.set({ axxPanelZu: false }); zeichne(); };
       ziehbar(root.getElementById("griff"), true);
       return;
     }
-    p.className = "p";
+    const gedockt = istGedockt();
+    p.className = gedockt ? "p docked" : "p";
+    lage();
     const k = Object.assign({}, S.d && S.d.katalog || {});
     if (!k.ean && S.ean) k.ean = S.ean;
+    const dockKnopf = IST_AMAZON
+      ? '<button id="dockBtn" title="' + (S.docked ? "Als schwebendes Fenster lösen" : "Rechts auf der Amazon-Seite verankern") + '">' + (S.docked ? "↗" : "📌") + "</button>"
+      : "";
     const kopf = '<div class="kopf" id="kopf">' +
       (k.bild ? '<img src="' + esc(k.bild) + '" alt="">' : '<div class="noimg">📦</div>') +
       '<div class="ktxt"><b title="' + esc(k.titel || "") + '">' + esc(k.titel || "Arbitragex") + "</b>" +
@@ -426,7 +481,7 @@
         (k.ean ? '<button class="cp ean" data-copy="' + esc(k.ean) + '" title="EAN kopieren">' + esc(k.ean) + "</button>"
                : (S.eanFehlt ? '<span class="ohne" title="Amazon führt für dieses Listing keine EAN, zum Beispiel wegen einer GTIN-Befreiung des Herstellers. Die Links suchen deshalb mit der ASIN.">keine EAN bei Amazon</span>' : "")) + "</span>" +
         (k.masse ? "<span>" + masseText(k.masse) + "</span>" : "") + "</div>" +
-      '<div class="kbtn"><button id="zahnrad" title="Extension-Einstellungen">⚙</button><button id="neu" title="Neu laden (frische Preise und Gebühren)">↻</button>' +
+      '<div class="kbtn">' + dockKnopf + '<button id="zahnrad" title="Extension-Einstellungen">⚙</button><button id="neu" title="Neu laden (frische Preise und Gebühren)">↻</button>' +
       '<button id="min" title="Zur AX-Leiste verkleinern">–</button><button id="x" title="Auf dieser Seite schließen">×</button></div></div>' +
       schnelllinks(k);
     let inhalt;
@@ -435,6 +490,8 @@
     else inhalt = rumpf();
     p.innerHTML = kopf + '<div class="inhalt">' + inhalt + einstellungen() + "</div>";
     einstellungenVerdrahten(root);
+    const db = root.getElementById("dockBtn");
+    if (db) db.onclick = () => { S.docked = !S.docked; store.set({ axxDocked: S.docked }); zeichne(); };
     root.getElementById("min").onclick = () => { S.zu = true; store.set({ axxPanelZu: true }); zeichne(); };
     root.getElementById("x").onclick = () => entfernen();
     root.getElementById("neu").onclick = () => laden(S.asin, true);
@@ -444,7 +501,7 @@
       if (det) { det.open = true; det.scrollIntoView({ block: "start", behavior: "smooth" }); }
     };
     kopierbar(root);
-    ziehbar(root.getElementById("kopf"), false);
+    if (!gedockt) ziehbar(root.getElementById("kopf"), false);
     if (S.d) verdrahten(root);
   }
 
@@ -499,16 +556,19 @@
 
   function rumpf() {
     const d = S.d, mk = S.mk, m = d.maerkte[mk] || {};
+    const hatModell = !!(m.vorhanden || m.modell_lokal || m.modell_fbm || m.modell_efn);
     const tabs = MPS.map((k) => {
       const x = d.maerkte[k] || {};
       const laedt = !d.maerkte[k] && S.ladeRest;
-      return '<button class="tab' + (k === mk ? " an" : "") + (x.vorhanden || laedt ? "" : " aus") + '" data-mk="' + k + '"' +
+      const aktiv = !!(x.vorhanden || x.modell_lokal || x.modell_fbm || x.modell_efn || laedt);
+      return '<button class="tab' + (k === mk ? " an" : "") + (aktiv ? "" : " aus") + '" data-mk="' + k + '"' +
         (laedt ? ' title="wird geladen"' : "") + ">" + FLAG[k] + " " + k.toUpperCase() + (laedt ? ' <span class="spin mini"></span>' : "") + "</button>";
     }).join("");
     if (!d.maerkte[mk] && S.ladeRest) return '<div class="tabs">' + tabs + '</div><div class="msg"><span class="spin"></span> ' + mk.toUpperCase() + " wird geladen…</div>";
     if (!d.maerkte[mk] && S.restFehler) return '<div class="tabs">' + tabs + '</div><div class="msg neg">' + mk.toUpperCase() + " nicht geladen: " + esc(S.restFehler) + "</div>";
-    if (m.fehler) return '<div class="tabs">' + tabs + '</div><div class="msg neg">Fehler ' + mk.toUpperCase() + ": " + esc(m.fehler) + "</div>";
-    if (!m.vorhanden) return '<div class="tabs">' + tabs + '</div><div class="msg">In ' + mk.toUpperCase() + " nicht gelistet.</div>";
+    if (m.fehler) return '<div class="tabs">' + tabs + '</div><div class="msg neg">Fehler ' + mk.toUpperCase() + ": " + esc(m.fehler) + "</div>" + chartBlock(m);
+    if (!hatModell) return '<div class="tabs">' + tabs + '</div><div class="msg">In ' + mk.toUpperCase() + " nicht gelistet.</div>" + chartBlock(m);
+    const oosHinweis = !m.vorhanden ? '<div class="mut" style="margin:0 0 6px">Kein aktives Angebot – eigenen VK eintragen, Gebühren &amp; Profit werden trotzdem berechnet.</div>' : "";
     const frei = m.frei === true ? '<span class="pos">Ja</span>' : m.frei === false
       ? '<span class="neg" title="' + esc(m.frei_detail || "") + '">🔒 Nein</span>' : '<span class="mut">?</span>';
     const bsr = mk === "de" && d.bsr && d.bsr.rank ? '<span title="' + esc(d.bsr.kategorie || "") + '">#' + zahl(d.bsr.rank) + "</span>"
@@ -520,6 +580,7 @@
       (S.tarif[mk] ? "EFN" : "Pan-EU") + "</button>" : "";
     // Reihenfolge (Betreiber 11.11.2026): Freigabe, BSR, Angebote und Sales über den Eingaben
     return '<div class="tabs">' + tabs + "</div>" +
+      oosHinweis +
       AxxRechner.fakten(d, mk, mk === seitenMarkt() ? badgeSeite() : null, BASE) +
       '<div class="eingabe"><div class="ehead">Kalkulation</div>' +
       '<div class="ein">' +
@@ -592,11 +653,11 @@
    * ein-/ausblendbare Linien mit eigener Strichart, EK-Linie, Keepa-Link, Werte als Tabelle
    * und ein-Klick-Grossansicht direkt ueber Amazon. */
   const REIHEN = [
-    ["buybox", "Buy Box", "#f0f3f0", 2.2, ""],
-    ["amazon", "Amazon", "#f59e42", 1.8, ""],
-    ["fba_min", "FBA min", "#46d39a", 1.6, ""],
-    ["fbm_min", "FBM min", "#a3b1a9", 1.6, "6 3"],
-    ["angebot_min", "günstigstes", "#7b8c84", 1.4, "2 3"]
+    ["buybox", "Buy Box", "#4f46e5", 2.2, ""],
+    ["amazon", "Amazon", "#ea580c", 1.8, ""],
+    ["fba_min", "FBA min", "#059669", 1.7, ""],
+    ["fbm_min", "FBM min", "#475569", 1.5, "6 3"],
+    ["angebot_min", "günstigstes", "#94a3b8", 1.4, "2 3"]
   ];
   const UST_STD = { de: 0.19, fr: 0.20, it: 0.22, es: 0.21 };
   const CW = 300, CH = 112, CB = 36, PL = 36, PR = 6, PT = 8, PB = 16;
@@ -636,6 +697,12 @@
     if (!asin || asin === "-") return "";
     return "https://keepa.com/#!product/" + (KEEPA_NR[mk] || 3) + "-" + encodeURIComponent(asin);
   }
+  function keepaImgUrl(asin, mk, bereich) {
+    if (!asin || asin === "-") return "";
+    return "https://graph.keepa.com/pricehistory.png?asin=" + encodeURIComponent(asin) +
+      "&domain=" + (KEEPA_NR[mk] || 3) + "&salesrank=1&amazon=1&new=1&bb=1&fba=1&fbm=1&range=" +
+      (Number(bereich) || 90) + "&width=640&height=280";
+  }
 
   function chartDaten(m) {
     const jetzt = Date.now() / 1000, t0 = jetzt - S.bereich * 86400;
@@ -665,6 +732,10 @@
     const pre = gross ? "cm-" : "c-";
     const W = gross ? 740 : CW, H = gross ? 236 : CH, HB = gross ? 58 : CB;
     const pl = gross ? 54 : PL, pr = gross ? 14 : PR, pt = gross ? 12 : PT, pb = gross ? 22 : PB;
+    const quelle = S.chartQuelle === "keepa" ? "keepa" : "eigen";
+    const qKnoepfe = '<span class="seg mini" role="group" aria-label="Chart-Quelle">' +
+      '<button type="button" data-cquelle="eigen" aria-pressed="' + (quelle === "eigen") + '" class="' + (quelle === "eigen" ? "an" : "") + '">ArbitrageX</button>' +
+      '<button type="button" data-cquelle="keepa" aria-pressed="' + (quelle === "keepa") + '" class="' + (quelle === "keepa" ? "an" : "") + '">Keepa</button></span>';
     const knoepfe = [30, 90, 365].map((t) => '<button type="button" data-bereich="' + t + '" aria-pressed="' + (S.bereich === t) + '" class="' + (S.bereich === t ? "an" : "") + '">' + (t === 365 ? "1 J" : t + " T") + "</button>").join("");
     const ku = keepaUrl(S.asin, S.mk);
     const keepa = ku ? '<a class="ckeepa" href="' + ku + '" target="_blank" rel="noopener noreferrer" title="Produkt bei Keepa öffnen">Keepa ↗</a>' : "";
@@ -673,17 +744,29 @@
       : '<button type="button" class="cbtn" id="cGross" title="Preisverlauf groß öffnen (Tastatur & Tabelle)" aria-label="Preisverlauf groß öffnen">⤢ Groß</button>';
     const mkTabs = gross && S.d && S.d.maerkte
       ? '<span class="seg mini" role="group" aria-label="Marktplatz">' + MPS.map((k) => {
-          const hat = (((S.d.maerkte[k] || {}).verlauf) || []).length > 0;
+          const hat = quelle === "keepa" || (((S.d.maerkte[k] || {}).verlauf) || []).length > 0;
           return '<button type="button" data-cmk="' + k + '" aria-pressed="' + (k === S.mk) + '" class="' + (k === S.mk ? "an" : "") + '"' + (hat ? "" : " disabled") + ">" + FLAG[k] + " " + k.toUpperCase() + "</button>";
         }).join("") + "</span>"
       : "";
-    const cd = chartDaten(m);
     const kopf = '<div class="chead"><b>' + (gross ? "Preisverlauf · " + esc(S.asin || "") + " (" + (S.mk || "de").toUpperCase() + ")" : "Preisverlauf") + "</b>" +
-      '<div class="chead-r">' + mkTabs + '<span class="seg mini" role="group" aria-label="Zeitraum">' + knoepfe + "</span>" + keepa + grossKnopf + "</div></div>";
+      '<div class="chead-r">' + qKnoepfe + mkTabs + '<span class="seg mini" role="group" aria-label="Zeitraum">' + knoepfe + "</span>" + keepa + grossKnopf + "</div></div>";
+    if (quelle === "keepa") {
+      if (gross) S.chartModal = null; else S.chart = null;
+      const imgUrl = keepaImgUrl(S.asin, S.mk, S.bereich);
+      return '<div class="box chart-box' + (gross ? " gross" : "") + '" id="' + pre + 'box" role="region" aria-label="Preisverlauf (Keepa)">' + kopf +
+        (imgUrl
+          ? '<div class="ckeepa-wrap"><img class="ckeepa-img" id="' + pre + 'keepaImg" src="' + esc(imgUrl) + '" alt="Keepa Preisverlauf ' + esc(S.asin || "") + '" loading="lazy">' +
+            '<div class="mut leer" id="' + pre + 'keepaErr" hidden>Keepa-Chart konnte nicht geladen werden.' + (ku ? ' <a class="ckeepa" href="' + ku + '" target="_blank" rel="noopener noreferrer">Bei Keepa öffnen ↗</a>' : "") + "</div></div>"
+          : '<div class="mut leer">Kein Keepa-Chart verfügbar.</div>') +
+        '<div class="mut">Keepa-Chart (' + (S.bereich === 365 ? "1 J" : S.bereich + " T") + ") · funktioniert auch ohne aktives Angebot</div></div>";
+    }
+    const cd = chartDaten(m);
     const vorh = REIHEN.filter(([k]) => cd.reihen[k]);
     if (!vorh.length) {
+      if (gross) S.chartModal = null; else S.chart = null;
       return '<div class="box chart-box' + (gross ? " gross" : "") + '" id="' + pre + 'box">' + kopf +
-        '<div class="mut leer">Noch keine Preise im Zeitraum. Jeder Besuch, der Nachtlauf und Delta füllen den Verlauf.</div></div>';
+        '<div class="mut leer">Noch keine Preise im Zeitraum. Jeder Besuch, der Nachtlauf und Delta füllen den Verlauf.' +
+        ' <button type="button" class="cbtn" data-cquelle="keepa" style="margin-left:4px">Keepa-Chart anzeigen</button></div></div>';
     }
     let sicht = vorh.filter(([k]) => !S.chartAus[k]);
     if (!sicht.length) sicht = [vorh[0]];
@@ -817,16 +900,16 @@
       if (t.verkauft) {
         summe += t.verkauft;
         svg += '<rect x="' + x.toFixed(1) + '" y="' + (H - 3 - hoehe(t.verkauft)).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + hoehe(t.verkauft).toFixed(1) +
-          '" fill="#ff8073" rx="1"><title>' + esc(dat + ": " + t.verkauft + " verkauft – " + namen(t.ts, "verkauf")) + "</title></rect>";
+          '" fill="#dc2626" rx="1"><title>' + esc(dat + ": " + t.verkauft + " verkauft – " + namen(t.ts, "verkauf")) + "</title></rect>";
       }
-      if (t.zugang) svg += '<path d="M' + (x + bw / 2 - 2.5).toFixed(1) + ",5 L" + (x + bw / 2 + 2.5).toFixed(1) + ",5 L" + (x + bw / 2).toFixed(1) + ',1 Z" fill="#46d39a"><title>' +
+      if (t.zugang) svg += '<path d="M' + (x + bw / 2 - 2.5).toFixed(1) + ",5 L" + (x + bw / 2 + 2.5).toFixed(1) + ",5 L" + (x + bw / 2).toFixed(1) + ',1 Z" fill="#059669"><title>' +
         esc(dat + ": Nachschub +" + t.zugang + " Stk – " + namen(t.ts, "zugang")) + "</title></path>";
     });
     return {
       html: '<svg viewBox="0 0 ' + CW + " " + H + '" class="chart klein">' + svg + "</svg>" +
         '<div class="mut streifen">Bestandsdrops: <b>' + summe + "</b> Verkäufe anderer (inkl. Amazon) im Zeitraum · " + (b.beobachtungen || 0) + " Messungen · " +
         (b.seller || 0) + " Verkäufer" + (b.erst ? " · seit " + tag(b.erst) : "") + "</div>",
-      legende: '<span><i style="background:#ff8073"></i>Verkäufe (Bestandsdrop)</span><span><i style="background:#46d39a"></i>Nachschub</span>'
+      legende: '<span><i style="background:#dc2626"></i>Verkäufe (Bestandsdrop)</span><span><i style="background:#059669"></i>Nachschub</span>'
     };
   }
 
@@ -915,6 +998,13 @@
       e.preventDefault(); S.bereich = +b.getAttribute("data-bereich"); store.set({ axxBereich: S.bereich }); zeichne();
       const neu = root.querySelector('#cmodal [data-bereich="' + S.bereich + '"]'); if (neu) neu.focus();
     });
+    cm.querySelectorAll("[data-cquelle]").forEach((b) => b.onclick = (e) => {
+      e.preventDefault();
+      const q = b.getAttribute("data-cquelle");
+      if (q !== "eigen" && q !== "keepa") return;
+      S.chartQuelle = q; store.set({ axxChartQuelle: q }); zeichne();
+      const neu = root.querySelector('#cmodal [data-cquelle="' + q + '"]'); if (neu) neu.focus();
+    });
     chartHover(root, true);
     const f = fokusSel ? root.querySelector(fokusSel) : root.getElementById("cm-wrap") || zu;
     if (f) f.focus();
@@ -938,6 +1028,8 @@
       if (gb) gb.onclick = () => { S.chartGross = true; chartModalZeichne(root); };
       if (S.chartGross) chartModalZeichne(root);
     }
+    const ki = root.getElementById(pre + "keepaImg"), ke = root.getElementById(pre + "keepaErr");
+    if (ki && ke) ki.addEventListener("error", () => { ki.style.display = "none"; ke.hidden = false; });
     if (!box || !meta) return;
     const { cd, W, pl, pr } = meta;
     chartLese(root, pre, meta, null);
@@ -1070,6 +1162,12 @@
     root.querySelectorAll("[data-bereich]").forEach((b) => b.onclick = (e) => {
       e.preventDefault(); S.bereich = +b.getAttribute("data-bereich"); store.set({ axxBereich: S.bereich }); zeichne();
     });
+    root.querySelectorAll("[data-cquelle]").forEach((b) => b.onclick = (e) => {
+      e.preventDefault();
+      const q = b.getAttribute("data-cquelle");
+      if (q !== "eigen" && q !== "keepa") return;
+      S.chartQuelle = q; store.set({ axxChartQuelle: q }); zeichne();
+    });
     chartHover(root);
     const ek = $("ek");
     if (ek) {
@@ -1080,6 +1178,7 @@
       $("netto").onchange = (e) => { S.ekNetto = e.target.checked; rechnen(); };
       $("url").oninput = (e) => { S.url = e.target.value.trim(); rechnen(); merkeEk(); };
       if ($("bestellnr")) $("bestellnr").oninput = (e) => { S.kauf.nr = e.target.value; };
+      if ($("listvk")) $("listvk").oninput = (e) => { S.kauf.vk = e.target.value; };
       if ($("sku")) $("sku").onchange = (e) => { S.kauf.sku = e.target.value; zeichne(); };
       if ($("cond")) $("cond").onchange = (e) => { S.kauf.cond = e.target.value; };
       if ($("kchan")) $("kchan").onchange = (e) => { S.kauf.chan = e.target.value; };
@@ -1097,12 +1196,14 @@
       const t = $("tarif");
       if (t) t.onclick = () => { S.tarif[S.mk] = !S.tarif[S.mk]; zeichne(); };
     }
+    const kb = $("kauf");
+    if (!kb) return;
     if (S.d && S.d.abo === false) {                   // Gratis: Einkauf registrieren ist Abo-Funktion
-      $("kauf").innerHTML = "🔒 Einkauf registrieren – mit Abo";
-      $("kauf").onclick = () => { merkeEk(); window.open(BASE + "/billing?src=extension-panel", "_blank", "noopener"); };
+      kb.innerHTML = "🔒 Einkauf registrieren – mit Abo";
+      kb.onclick = () => { merkeEk(); window.open(BASE + "/billing?src=extension-panel", "_blank", "noopener"); };
       return rechnen();
     }
-    $("kauf").onclick = einkaufRegistrieren;
+    kb.onclick = einkaufRegistrieren;
     skusLaden(S.asin);
     rechnen();
   }
@@ -1137,7 +1238,8 @@
     return '<div class="kaufgrid">' +
       '<label>Bestellt bei<input id="url" type="url" placeholder="Link zum Einkauf (Shop/Bestellung)" value="' + esc(S.url || "") + '"></label>' +
       '<label>Bestellnr.<input id="bestellnr" type="text" placeholder="optional" value="' + esc(k.nr || "") + '"></label>' +
-      (abo ? '<label class="voll">SKU<select id="sku"' + (k.d ? "" : " disabled") + ">" + skuOpt + "</select></label>" +
+      (abo ? '<label class="voll">Listing-Preis DE € (leer = Buy Box + Aufschlag)<input id="listvk" inputmode="decimal" placeholder="auto = Buy Box + Aufschlag" value="' + esc(k.vk || "") + '"></label>' +
+        '<label class="voll">SKU<select id="sku"' + (k.d ? "" : " disabled") + ">" + skuOpt + "</select></label>" +
         (neu ? '<label>Zustand der neuen SKU<select id="cond">' + zust + "</select></label>" +
           '<label>Versandart (Listing)<select id="kchan">' +
             '<option value="FBA"' + (aktChan !== "FBM" ? " selected" : "") + ">FBA (Amazon)</option>" +
@@ -1172,12 +1274,13 @@
     const wahl = S.kauf.sku === "__neu__"
       ? { new_sku: true, condition: S.kauf.cond || "new_new", list_channel: listCh, announce: listCh !== "FBM" }
       : (S.kauf.sku ? { sku: S.kauf.sku } : {});
-    const de = (S.d.maerkte.de || {}).buybox;
-    // 1.9.33: nur einen selbst geaenderten VK als sell_price schicken; sonst null, damit der Server den eigenen Aufschlag (DEFAULT_MARKUP) anwendet statt die rohe Buy Box zu listen.
-    const eigenVk = (S.vk.de != null && S.vk.de > 0 && (de == null || Math.abs(S.vk.de - de) >= 0.005)) ? S.vk.de : null;
+    // 1.9.37: Profit-Rechner-VK (#vk) darf nie den Listing-Preis ueberschreiben (sonst geht bei
+    // fehlender Buy Box oder Test-Kalkulation der Aufschlag verloren). Nur das eigene Feld #listvk zaehlt.
+    const eigenVkRaw = num(S.kauf.vk);
+    const eigenVk = (eigenVkRaw != null && eigenVkRaw > 0) ? eigenVkRaw : null;
     const r = await api("/api/purchases", "POST", Object.assign({
       asin: S.asin, title: k.titel, image: k.bild, source: shop, source_url: url, cost: S.ek, quantity: S.menge || 1,
-      sell_price: eigenVk, order_number: (S.kauf.nr || "").trim(), cost_gross: S.ekNetto ? 0 : 1 }, wahl));
+      sell_price: eigenVk, sell_price_manual: eigenVk != null, order_number: (S.kauf.nr || "").trim(), cost_gross: S.ekNetto ? 0 : 1 }, wahl));
     S.kauf.sendet = false;
     if (!r.ok) {
       btn.disabled = false; btn.textContent = "Einkauf registrieren";
@@ -1215,7 +1318,7 @@
       const v = num(pr.value);
       if (v == null || v < 0) return;
       const r = await api("/api/ext/einstellungen", "POST", { prep: v });
-      pr.style.outline = r && r.ok ? "2px solid #46d39a" : "2px solid #ff8073";
+      pr.style.outline = r && r.ok ? "2px solid #047857" : "2px solid #b42318";
       if (r && r.ok) { S.prep = v; if (S.d) S.d.prep = v; const f = root.getElementById("prep"); if (f) f.value = String(v).replace(".", ","); rechnen(); }
     };
     [["einst-fbm-de", "fbm_versand_de", "de"], ["einst-fbm-eu", "fbm_versand_eu", "eu"]].forEach(([id, key, zone]) => {
@@ -1225,7 +1328,7 @@
         const v = num(el.value);
         if (v == null || v < 0 || v > 500) return;
         const r = await api("/api/ext/einstellungen", "POST", { [key]: v });
-        el.style.outline = r && r.ok ? "2px solid #46d39a" : "2px solid #ff8073";
+        el.style.outline = r && r.ok ? "2px solid #047857" : "2px solid #b42318";
         if (r && r.ok) {
           if (zone === "de") S.versandDe = v; else S.versandEu = v;
           if (S.d) S.d[key] = v;
@@ -1253,7 +1356,7 @@
     MPS.forEach((k) => {
       const m = d.maerkte[k] || {};
       const g = root.getElementById("g-" + k), r = root.getElementById("r-" + k);
-      if (!m.vorhanden) { if (g) g.textContent = "—"; return; }
+      if (!m.vorhanden && !m.modell_lokal && !m.modell_fbm && !m.modell_efn) { if (g) g.textContent = "—"; return; }
       const e = AxxRechner.rechne(m, S.tarif[k], S.vk[k], S.ek, opts(k));
       if (g) g.innerHTML = e.ok && e.gewinn != null ? '<b class="' + (e.gewinn >= 0 ? "pos" : "neg") + '">' + eur(e.gewinn) + "</b>" : "—";
       if (r) r.textContent = e.ok && e.roi != null ? pct(e.roi) : "—";
@@ -1266,18 +1369,21 @@
         lh.textContent = teile.join(" · ");
       }
       const erg = root.getElementById("erg"), auf = root.getElementById("aufst");
-      if (!e.ok) { if (erg) erg.innerHTML = '<span class="neg">' + esc(e.fehler) + "</span>"; if (auf) auf.innerHTML = ""; return; }
+      if (!e.ok) { if (erg) { erg.className = "erg erg-neg"; erg.innerHTML = '<span class="neg">' + esc(e.fehler) + "</span>"; } if (auf) auf.innerHTML = ""; return; }
       S.kurz = e.gewinn != null ? e.gewinn : null;
       const gebHinweis = (e.fbaFehlt ? '<div class="k voll"><i class="neg">⚠ Amazon liefert für diesen Artikel keine FBA-Gebühr – sie fehlt in der Rechnung, der Gewinn ist zu hoch.</i></div>' : "") +
         (e.fbaTarif ? '<div class="k voll"><i>FBA-Gebühr nach Amazon-Tarifkarte aus den Packmaßen (Amazon nennt keinen Wert).</i></div>' : "") +
         (!e.exakt && S.d.exakt_abruf ? '<div class="k voll"><i>Gebühren für diesen VK werden bei Amazon abgefragt …</i></div>' : "");
-      if (erg) erg.innerHTML = gebHinweis +
+      if (erg) {
+        erg.className = "erg" + (e.gewinn == null ? "" : e.gewinn >= 0 ? " erg-pos" : " erg-neg");
+        erg.innerHTML = gebHinweis +
         '<div class="k gross"><i>Gewinn / Stück</i><b class="' + (e.gewinn == null ? "" : e.gewinn >= 0 ? "pos" : "neg") + '">' + eur(e.gewinn) + "</b></div>" +
         '<div class="k gross"><i>ROI · Nettomarge</i><b>' + pct(e.roi) + " · " + pct(e.marge) + "</b></div>" +
         '<div class="k"><i>Max-EK (' + S.ziel + ' % ROI)</i><b>' + eur(e.maxEk) + "</b></div>" +
         '<div class="k"><i>Break-even VK</i><b>' + eur(e.breakEvenVk) + "</b></div>" +
         (e.menge > 1 ? '<div class="k voll"><i>Gesamt ' + e.menge + " Stück · Einsatz " + eur(e.einsatz) + '</i><b class="' +
           (e.gesamt >= 0 ? "pos" : "neg") + '">' + eur(e.gesamt) + "</b></div>" : "");
+      }
       const ekBrutto = e.ekNetto != null ? (AxxRechner.einkaufsland(S.url) !== "de" || S.ekNetto ? e.ekNetto : e.ekNetto * (1 + (S.d.ek_ust || 19) / 100)) : null;
       const vstEk = ekBrutto != null ? ekBrutto - e.ekNetto : 0;
       const vstGeb = e.vorsteuerGebuehren ? e.gebuehrUst : 0;
@@ -1323,6 +1429,7 @@
   function ziehbar(h, zuLeiste) {
     if (!h) return;
     h.onmousedown = (ev) => {
+      if (!zuLeiste && istGedockt()) return;
       if (ev.target.tagName === "BUTTON" || ev.target.tagName === "A") return;
       const r = S.host.getBoundingClientRect(), dx = ev.clientX - r.left, dy = ev.clientY - r.top;
       const mv = (e) => {
@@ -1392,7 +1499,7 @@
   /* --- Laden -------------------------------------------------------------- */
   async function laden(asin, frisch) {
     S.asin = asin; S.d = null; S.fehler = null; S.mk = seitenMarkt(); S.aod = {}; S.frisch = {}; S.kurz = null; S.ean = null; S.eanFehlt = false;
-    S.kauf = { d: null, sku: null, cond: null, nr: "", laedt: false, sendet: false }; S.kaufMeldung = "";
+    S.kauf = { d: null, sku: null, cond: null, nr: "", vk: "", laedt: false, sendet: false }; S.kaufMeldung = "";
     // EAN gesondert holen: der Katalogaufruf der Analyse nennt sie nicht immer, die Leiste braucht sie sofort
     api("/api/ext/ean?asin=" + encodeURIComponent(asin)).then((r) => {
       if (S.asin !== asin || !r || !r.ok || !r.data) return;
@@ -1458,9 +1565,11 @@
   }
 
   async function pruefen() {
-    const st = await store.get(["axxModus", "axxPanel", "axxPanelZu", "axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxChartAus"]);
+    const st = await store.get(["axxModus", "axxPanel", "axxPanelZu", "axxDocked", "axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxChartAus", "axxChartQuelle"]);
     if (st.axxBereich) S.bereich = Number(st.axxBereich);
     if (st.axxChartAus && typeof st.axxChartAus === "object") S.chartAus = Object.assign({}, st.axxChartAus);
+    if (st.axxChartQuelle === "keepa" || st.axxChartQuelle === "eigen") S.chartQuelle = st.axxChartQuelle;
+    S.docked = st.axxDocked !== false;
     const an = (st.axxModus || "profit") === "profit" && st.axxPanel !== false;
     S.modus = st.axxModus || "profit";
     let asin = IST_AMAZON ? seitenAsin() : null;
@@ -1493,12 +1602,14 @@
    * kein neuer Tab: ASIN -> direkt rechnen; EAN/Titel -> Katalogsuche über das eigene Konto,
    * ein Treffer -> rechnen, mehrere -> Auswahl (nie raten). Auf Shop-Seiten ist der Shop die Bezugsquelle. */
   async function menue(m) {
-    const st = await store.get(["axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxModus", "axxChartAus"]);
+    const st = await store.get(["axxPanelPos", "axxLeistePos", "axxDocked", "axxZielRoi", "axxBereich", "axxModus", "axxChartAus", "axxChartQuelle"]);
     S.modus = st.axxModus || "profit";
+    S.docked = st.axxDocked !== false;
     S.pos = st.axxPanelPos || null; S.posZu = st.axxLeistePos || null;
     if (st.axxZielRoi != null) S.ziel = Number(st.axxZielRoi);
     if (st.axxBereich) S.bereich = Number(st.axxBereich);
     if (st.axxChartAus && typeof st.axxChartAus === "object") S.chartAus = Object.assign({}, st.axxChartAus);
+    if (st.axxChartQuelle === "keepa" || st.axxChartQuelle === "eigen") S.chartQuelle = st.axxChartQuelle;
     S.zu = false; S.menue = true; S.menueUrl = location.href; S.treffer = null; S.wahlText = "";
     S.suchText = m.art === "text" ? String(m.wert).slice(0, 120) : "";      // ASIN/EAN stehen schon als Kennung im Kopf
     S.shop = null;
@@ -1540,274 +1651,326 @@
   // Einstellungen live (Popup → ⚙) und Seitenwechsel ohne Neuladen (Varianten-Klick)
   try { chrome.storage.onChanged.addListener((ch) => { if (ch.axxModus || ch.axxPanel) pruefen(); }); } catch (e) { }
   let letzteUrl = location.href;
-  setInterval(() => { if (location.href !== letzteUrl) { letzteUrl = location.href; S.versuche = 0; pruefen(); } }, 1000);
+  setInterval(() => {
+    if (location.href !== letzteUrl) { letzteUrl = location.href; S.versuche = 0; pruefen(); return; }
+    // Falls Amazon #rightCol asynchron nachlaedt oder bei Varianten-Wechsel neu baut: sauber andocken
+    if (S.host && IST_AMAZON && !S.zu && S.docked) {
+      const z = dockZiel();
+      if (z && (!S.host.isConnected || S.host.parentElement !== z)) lage();
+    }
+  }, 1000);
   pruefen();
 
   const CSS = `
-  /* Gestaltung 10.11.2026: ruhiges Messinstrument statt Kachelwand. Dunkle Fläche, weil Amazon- und
-     Shop-Seiten weiß sind (Betreiber: helles Panel „unpassend“) — das Panel muss sich abheben.
-     Grün nur für Geld im Plus, Rot nur für Minus. Zahlen tabellarisch, Trennlinien statt Rahmen. */
-  :host { all: initial; }
+  /* Gestaltung 1.9.38 (26.11.2026): ProfitGo-inspired klares, helles ArbitrageX-Design + SellerAmp-Verankerung
+     auf Amazon-Produktseiten (#rightCol); schwebendes Fenster bleibt auf Non-Amazon-Seiten erhalten.
+     ArbitrageX CI: Weiß #ffffff, Slate-Fläche #f6f8fb, Indigo #4f46e5, Emerald #047857, Crimson #b42318. */
+  :host {
+    all: initial;
+    --bg: #ffffff;
+    --papier: #ffffff;
+    --flaeche: #f6f8fb;
+    --flaeche2: #eef2f7;
+    --tinte: #0f1c30;
+    --leise: #52627a;
+    --linie: #e2e8f0;
+    --rand: #cbd5e1;
+    --feld: #ffffff;
+    --heller: #e8eef6;
+    --akzent: #4f46e5;
+    --akzent-h: #4338ca;
+    --akzent-bg: #eef2ff;
+    --plus: #047857;
+    --plus-bg: #ecfdf5;
+    --plus-bd: #a7f3d0;
+    --minus: #b42318;
+    --minus-bg: #fef2f2;
+    --minus-bd: #fecaca;
+    --warn: #975a00;
+    --warn-bg: #fffbeb;
+    --warn-bd: #fde68a;
+  }
   * { box-sizing: border-box; }
-  .p { --papier: #151c19; --flaeche: #1f2824; --tinte: #f0f3f0; --leise: #98a59e; --linie: #2c3732; --plus: #46d39a; --minus: #ff8073;
-       --feld: #0e1411; --rand: #36433d; --heller: #2a3530; --akzent: #1f9d6b;
-       width: 372px; max-height: calc(100vh - 76px); overflow-y: auto; overscroll-behavior: contain; background: var(--papier); color: var(--tinte);
-       font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums;
-       border-radius: 14px; border: 1px solid #0b100e; box-shadow: 0 22px 50px -12px rgba(8,12,10,.55), 0 2px 8px rgba(8,12,10,.25);
-       scrollbar-width: thin; scrollbar-color: #3a4741 transparent; }
+  .p {
+    width: 368px; max-height: calc(100vh - 76px); overflow-y: auto; overscroll-behavior: contain;
+    background: var(--papier); color: var(--tinte); color-scheme: light;
+    font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
+    border-radius: 14px; border: 1px solid rgba(15,28,48,.12);
+    box-shadow: 0 20px 48px -12px rgba(15,28,48,.22), 0 2px 8px rgba(15,28,48,.08);
+    scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent;
+  }
+  /* SellerAmp-Modus auf Amazon-Produktseiten: nativ in #rightCol verankert */
+  .p.docked {
+    width: 100%; max-width: 100%; max-height: none; overflow: visible;
+    border-radius: 12px; border: 1px solid #d5dbe5;
+    box-shadow: 0 2px 10px rgba(15,28,48,.06);
+  }
+  .p.docked .kopf { position: static; cursor: default; border-radius: 12px 12px 0 0; }
   .p.zu { width: auto; max-height: none; background: none; box-shadow: none; border: 0; overflow: visible; }
-  button, input, a { font-family: inherit; }
-  a { color: var(--tinte); }
+  button, input, select, a { font-family: inherit; }
+  button { transition: background-color .14s ease, border-color .14s ease, color .14s ease, transform .1s ease; }
+  button:active:not(:disabled) { transform: scale(.97); }
+  a { color: var(--akzent); }
 
-  /* eingeklappt: schmale helle Leiste */
-  .leiste { display: flex; align-items: stretch; background: var(--papier); border: 1px solid #0b100e; border-radius: 11px; overflow: hidden;
-            box-shadow: 0 12px 28px -10px rgba(8,12,10,.6), 0 1px 4px rgba(8,12,10,.3); font-size: 12.5px; line-height: 1; }
-  .leiste button, .leiste a, .leiste span { border: 0; background: transparent; color: var(--tinte); padding: 0 11px; height: 36px; cursor: pointer;
+  /* eingeklappt: klare weiße AX-Leiste */
+  .leiste { display: flex; align-items: stretch; background: var(--papier); border: 1px solid var(--rand); border-radius: 11px; overflow: hidden;
+            box-shadow: 0 12px 28px -8px rgba(15,28,48,.22), 0 2px 6px rgba(15,28,48,.08); font-size: 12.5px; line-height: 1; }
+  .leiste button, .leiste a, .leiste span { border: 0; background: transparent; color: var(--tinte); padding: 0 10px; height: 36px; cursor: pointer;
             font: inherit; white-space: nowrap; text-decoration: none; display: flex; align-items: center; }
-  .leiste button { font-weight: 600; letter-spacing: .02em; cursor: copy; }
+  .leiste button { font-weight: 600; letter-spacing: .01em; cursor: copy; }
   .leiste button:hover, .leiste a:hover { background: var(--flaeche); }
   .leiste .ax { background: var(--akzent); color: #fff; font-weight: 700; letter-spacing: .04em; padding: 0 12px; cursor: pointer; }
-  .leiste .ax:hover { background: #24b079; }
+  .leiste .ax:hover { background: var(--akzent-h); }
   .leiste .ean { color: var(--leise); font-weight: 500; padding-left: 2px; }
   .leiste a { color: var(--leise); border-left: 1px solid var(--linie); font-weight: 500; }
-  .leiste a:hover { color: var(--tinte); }
+  .leiste a:hover { color: var(--akzent); }
   .leiste .lg { font-weight: 700; border-left: 1px solid var(--linie); cursor: default; }
-  .leiste .lg.pos { color: var(--plus); } .leiste .lg.neg { color: var(--minus); }
-  .leiste .grip { cursor: move; color: #5d6a63; padding: 0 9px; border-left: 1px solid var(--linie); }
+  .leiste .lg.pos { color: var(--plus); background: var(--plus-bg); }
+  .leiste .lg.neg { color: var(--minus); background: var(--minus-bg); }
+  .leiste .grip { cursor: move; color: #94a3b8; padding: 0 9px; border-left: 1px solid var(--linie); }
 
   /* Kopf */
-  .kopf { display: flex; align-items: flex-start; gap: 12px; padding: 12px 12px 10px 14px; cursor: move; background: var(--papier);
-          border-radius: 14px 14px 0 0; position: sticky; top: 0; z-index: 3; }
-  .kopf img, .kopf .noimg { width: 70px; height: 70px; object-fit: contain; background: #fff; border: 0; border-radius: 10px;
-          flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 26px; padding: 5px; }
+  .kopf { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px 10px; cursor: move; background: var(--papier);
+          border-bottom: 1px solid var(--linie); border-radius: 14px 14px 0 0; position: sticky; top: 0; z-index: 3; }
+  .kopf img, .kopf .noimg { width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--linie); border-radius: 9px;
+          flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 22px; padding: 4px; }
   .ktxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .ktxt b { padding-right: 2px; }
-  .ktxt b { font-size: 13px; font-weight: 600; line-height: 1.3; letter-spacing: -.005em; display: -webkit-box; -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical; overflow: hidden; }
-  .ktxt span { font-size: 11px; color: var(--leise); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ktxt b { font-size: 12.5px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; color: var(--tinte);
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding-right: 102px; }
+  .ktxt span { font-size: 10.5px; color: var(--leise); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .codes { display: flex; gap: 4px; flex-wrap: nowrap; }
-  .cp { background: var(--flaeche); border: 0; color: var(--tinte); font-size: 10.5px; font-weight: 600; letter-spacing: 0; border-radius: 6px;
-        padding: 3px 5px; cursor: copy; white-space: nowrap; }
-  .cp:hover { background: var(--heller); }
+  .cp { background: var(--flaeche); border: 1px solid var(--linie); color: var(--tinte); font-size: 10.5px; font-weight: 600; letter-spacing: 0;
+        border-radius: 6px; padding: 2px 6px; cursor: copy; white-space: nowrap; }
+  .cp:hover { background: var(--akzent-bg); border-color: #c7d2fe; color: var(--akzent); }
   .cp.ean { color: var(--leise); font-weight: 500; }
-  .codes .ohne { font-size: 11px; color: var(--leise); padding: 3px 2px; cursor: help; }
-  .kbtn { display: flex; gap: 0; margin: -6px -6px 0 -4px; position: absolute; top: 12px; right: 12px; }
-  .ktxt b { padding-right: 84px; }
-  .kbtn button { background: transparent; color: var(--leise); border: 0; border-radius: 7px; width: 22px; height: 26px; padding: 0; cursor: pointer; font-size: 15px; line-height: 1; }
-  .kbtn button:hover { background: var(--flaeche); color: var(--tinte); }
-  .links { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0 14px; border: 1px solid var(--linie); border-radius: 9px; overflow: hidden; }
-  .links a { text-align: center; padding: 7px 0; font-size: 12px; font-weight: 600; text-decoration: none; color: var(--tinte); }
+  .codes .ohne { font-size: 10.5px; color: var(--leise); padding: 2px; cursor: help; }
+  .kbtn { display: flex; gap: 1px; position: absolute; top: 9px; right: 9px; }
+  .kbtn button { background: transparent; color: var(--leise); border: 0; border-radius: 7px; width: 23px; height: 25px; padding: 0; cursor: pointer;
+                 font-size: 13.5px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+  .kbtn button:hover { background: var(--flaeche2); color: var(--tinte); }
+  .links { display: grid; grid-template-columns: repeat(3, 1fr); margin: 8px 12px 0; background: var(--flaeche);
+           border: 1px solid var(--linie); border-radius: 9px; overflow: hidden; }
+  .links a { text-align: center; padding: 6px 0; font-size: 11.5px; font-weight: 600; text-decoration: none; color: var(--tinte);
+             transition: background-color .14s ease, color .14s ease; }
   .links a + a { border-left: 1px solid var(--linie); }
-  .links a:hover { background: var(--flaeche); }
+  .links a:hover { background: var(--akzent-bg); color: var(--akzent); }
 
-  .inhalt { padding: 10px 14px 14px; }
+  .inhalt { padding: 9px 12px 13px; }
   .msg { padding: 12px 0; color: var(--leise); line-height: 1.55; }
   .kopf.wahl { align-items: center; }
-  .kopf.wahl .noimg { padding: 0; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 9px; background: var(--plus); color: #0e1512; font-size: 12px; font-weight: 800;
-    display: flex; align-items: center; justify-content: center; letter-spacing: .3px; }
+  .kopf.wahl .noimg { padding: 0; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 9px; border: 0; background: var(--akzent); color: #fff;
+    font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; letter-spacing: .3px; }
   .trl { display: flex; flex-direction: column; gap: 6px; }
   .tr { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; text-align: left; background: var(--flaeche);
     border: 1px solid var(--linie); border-radius: 10px; padding: 7px 9px; margin: 0; cursor: pointer; color: var(--tinte); font: inherit; }
-  .tr:hover { border-color: var(--plus); background: #24302b; }
-  .tr img, .tr .noimg { width: 44px; height: 44px; flex: 0 0 44px; object-fit: contain; background: #fff; border-radius: 7px;
+  .tr:hover { border-color: var(--akzent); background: var(--akzent-bg); }
+  .tr img, .tr .noimg { width: 44px; height: 44px; flex: 0 0 44px; object-fit: contain; background: #fff; border: 1px solid var(--linie); border-radius: 7px;
     display: flex; align-items: center; justify-content: center; font-size: 20px; }
   .tr .trt { display: block; min-width: 0; flex: 1 1 auto; }
   .tr b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12px; font-weight: 600; line-height: 1.35; white-space: normal; }
   .tr small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--leise); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .msg b { color: var(--tinte); font-size: 14px; }
-  .msg a { color: var(--tinte); font-weight: 600; }
-  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--linie); border-top-color: var(--tinte); border-radius: 50%;
+  .msg a { color: var(--akzent); font-weight: 600; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--linie); border-top-color: var(--akzent); border-radius: 50%;
           animation: s .7s linear infinite; vertical-align: -2px; }
   @keyframes s { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
+  @media (prefers-reduced-motion: reduce) {
+    .spin { animation-duration: 2.4s; }
+    button, a { transition: none !important; transform: none !important; }
+  }
 
-  /* Märkte als Reiter */
-  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--linie); margin-bottom: 9px; }
-  .tab { border: 0; background: none; padding: 7px 0 8px; font-size: 12px; font-weight: 600; cursor: pointer; color: var(--leise); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-  .tab:hover { color: var(--tinte); }
-  .tab.an { color: var(--tinte); border-bottom-color: var(--tinte); }
-  .tab.aus { opacity: .4; }
+  /* Märkte als klare ProfitGo-Segmentleiste */
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; background: var(--flaeche2); border-radius: 10px; padding: 3px; margin-bottom: 9px; }
+  .tab { border: 0; background: transparent; padding: 6px 2px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--leise);
+         border-radius: 7px; display: flex; align-items: center; justify-content: center; gap: 3px; }
+  .tab:hover { color: var(--tinte); background: rgba(255,255,255,.55); }
+  .tab.an { background: #ffffff; color: var(--tinte); box-shadow: 0 1px 3px rgba(15,28,48,.10), 0 0 0 1px rgba(15,28,48,.05); }
+  .tab.aus { opacity: .45; }
 
-  /* Kennzahlen: Raster mit Haarlinien statt einzelner Kästen */
-  .grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--linie); border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+  /* Kennzahlen: aufgeräumtes 3×2 Raster */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--linie); border-radius: 10px; overflow: hidden; margin-bottom: 8px; background: var(--flaeche); }
   .g3 { grid-template-columns: 1fr 1fr 1.25fr; }
-  .k { padding: 6px 10px 7px; min-width: 0; box-shadow: 1px 0 0 var(--linie), 0 1px 0 var(--linie); }
-  .k i { display: block; font-style: normal; font-size: 10.5px; color: var(--leise); line-height: 1.3; margin-bottom: 1px; }
-  .k b { font-size: 13px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
-  .k small { display: block; font-size: 10.5px; font-weight: 400; color: var(--leise); }
+  .k { padding: 6px 9px 7px; min-width: 0; box-shadow: 1px 0 0 var(--linie), 0 1px 0 var(--linie); }
+  .k i { display: block; font-style: normal; font-size: 10px; color: var(--leise); line-height: 1.3; margin-bottom: 1px; font-weight: 500; }
+  .k b { font-size: 12.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; color: var(--tinte); }
+  .k small { display: block; font-size: 10px; font-weight: 400; color: var(--leise); }
   .badgetxt { color: var(--plus); }
-  .abo { color: var(--tinte); text-decoration: underline; font-weight: 600; }
+  .abo { color: var(--akzent); text-decoration: underline; font-weight: 600; }
 
   /* Kalkulation */
-  .eingabe { margin: 2px 0 12px; }
+  .eingabe { margin: 2px 0 11px; }
   .ehead { display: none; }
-  .fakten { display: grid; grid-template-columns: 1fr 1fr 1.25fr; border: 1px solid var(--linie); border-radius: 10px; overflow: hidden; margin-bottom: 9px; }
-  .fk { padding: 5px 9px 6px; min-width: 0; box-shadow: 1px 0 0 var(--linie), 0 1px 0 var(--linie); }
-  .fk i { display: block; font-style: normal; font-size: 10px; color: var(--leise); line-height: 1.3; }
-  .fk b { display: block; font-size: 13px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fk small { display: block; font-size: 10px; color: var(--leise); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fk small a { color: var(--leise); }
-  .fk .mut { font-size: 12px; }
-  .ein { display: grid; grid-template-columns: 1.15fr 1.15fr .7fr; gap: 8px; margin-bottom: 7px; }
-  .ein label, .url { display: flex; flex-direction: column; font-size: 10.5px; color: var(--leise); gap: 3px; }
-  input { font-size: 14px; font-weight: 600; border: 1px solid var(--rand); border-radius: 8px; padding: 6px 9px; width: 100%; background: var(--feld); color: var(--tinte);
-          font-variant-numeric: tabular-nums; }
-  input::placeholder { color: #66736c; font-weight: 400; }
-  input:hover { border-color: #4a5952; }
-  input:focus { outline: 2px solid var(--plus); outline-offset: -1px; border-color: var(--plus); }
-  button:focus-visible, a:focus-visible { outline: 2px solid var(--plus); outline-offset: 1px; }
-  .opt { display: flex; gap: 6px 10px; align-items: center; font-size: 11.5px; color: var(--leise); margin-bottom: 7px; flex-wrap: wrap; }
-  .opt label { display: flex; align-items: center; gap: 5px; }
-  .opt input[type=checkbox] { width: 14px; height: 14px; margin: 0; accent-color: var(--akzent); }
-  .opt input:not([type]) { width: 40px; padding: 4px 6px; font-size: 12px; }
-  .opt { flex-wrap: nowrap; white-space: nowrap; }
-  .opt { gap: 6px 6px; flex-wrap: wrap; }
-  .opt input:not([type]) { width: 54px; padding: 4px 6px; }
-  .opt .seg button { padding: 3px 8px; }
-  .opt label { gap: 4px; }
+  .fakten { display: grid; grid-template-columns: 1fr 1fr 1.2fr; border: 1px solid var(--linie); border-radius: 10px; overflow: hidden; margin-bottom: 9px; background: var(--flaeche); }
+  .fk { padding: 6px 8px 6px; min-width: 0; box-shadow: 1px 0 0 var(--linie), 0 1px 0 var(--linie); }
+  .fk i { display: block; font-style: normal; font-size: 10px; color: var(--leise); line-height: 1.25; font-weight: 500; }
+  .fk b { display: block; font-size: 12.5px; font-weight: 600; line-height: 1.28; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--tinte); margin-top: 1px; }
+  .fk small { display: block; font-size: 9.5px; color: var(--leise); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fk small a { color: var(--akzent); }
+  .fk .mut { font-size: 11.5px; }
+  .ein { display: grid; grid-template-columns: 1.15fr 1.15fr .65fr; gap: 7px; margin-bottom: 8px; }
+  .ein label, .url { display: flex; flex-direction: column; font-size: 10.5px; font-weight: 600; color: var(--leise); gap: 3px; }
+  input { font-size: 14px; font-weight: 600; border: 1px solid var(--rand); border-radius: 8px; padding: 7px 9px; width: 100%; background: var(--feld); color: var(--tinte);
+          font-variant-numeric: tabular-nums; box-shadow: inset 0 1px 2px rgba(15,28,48,.03); transition: border-color .14s ease, box-shadow .14s ease; }
+  input::placeholder { color: #94a3b8; font-weight: 400; }
+  input:hover { border-color: #94a3b8; }
+  input:focus { outline: none; border-color: var(--akzent); box-shadow: 0 0 0 3px rgba(79,70,229,.15); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
+  .opt { display: flex; gap: 6px 8px; align-items: center; font-size: 11.5px; color: var(--leise); margin-bottom: 8px; flex-wrap: wrap; }
+  .opt label { display: flex; align-items: center; gap: 4px; font-weight: 500; }
+  .opt input[type=checkbox] { width: 14px; height: 14px; margin: 0; accent-color: var(--akzent); box-shadow: none; }
+  .opt input:not([type]) { width: 54px; padding: 4px 6px; font-size: 12px; }
+  .opt .seg button { padding: 4px 9px; }
   .lz { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
-  .ustk { border: 0; background: var(--heller); color: var(--tinte); border-radius: 5px; padding: 0 5px; font-size: 10px; font-weight: 600; line-height: 14px; cursor: pointer; }
-  .ustk:hover { background: #3a4741; }
+  .ustk { border: 1px solid var(--linie); background: var(--flaeche); color: var(--tinte); border-radius: 5px; padding: 0 5px; font-size: 10px; font-weight: 600; line-height: 15px; cursor: pointer; }
+  .ustk:hover { background: var(--akzent-bg); border-color: #c7d2fe; color: var(--akzent); }
   .ustg { display: inline-flex; gap: 3px; }
   .ustk.fest { cursor: default; }
-  .ustk.fest:hover { background: var(--heller); }
-  .ustk.warn { box-shadow: inset 0 0 0 1px #d9a441; }
-  .seg { display: inline-flex; background: var(--flaeche); border-radius: 8px; padding: 2px; }
-  .seg button { border: 0; background: transparent; color: var(--leise); padding: 3px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; border-radius: 6px; }
-  .seg button.an { background: #3a4741; color: var(--tinte); }
-  .seg.mini { margin-left: 6px; }
+  .ustk.fest:hover { background: var(--flaeche); border-color: var(--linie); color: var(--tinte); }
+  .ustk.warn { box-shadow: inset 0 0 0 1px #d97706; background: var(--warn-bg); color: var(--warn); }
+  .seg { display: inline-flex; background: var(--flaeche2); border-radius: 8px; padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; color: var(--leise); padding: 4px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer; border-radius: 6px; }
+  .seg button:hover { color: var(--tinte); }
+  .seg button.an { background: #ffffff; color: var(--tinte); box-shadow: 0 1px 2px rgba(15,28,48,.10); }
+  .seg.mini { margin-left: 4px; }
   .seg.mini button { padding: 2px 7px; font-size: 10.5px; }
-  .tarif { border: 1px solid var(--rand); background: var(--feld); color: var(--tinte); border-radius: 7px; padding: 3px 8px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
-  .tarif:hover { background: var(--flaeche); }
+  .tarif { border: 1px solid var(--rand); background: #fff; color: var(--tinte); border-radius: 7px; padding: 3px 8px; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+  .tarif:hover { background: var(--akzent-bg); border-color: #c7d2fe; color: var(--akzent); }
   .url input { font-size: 12px; font-weight: 400; padding: 6px 9px; }
-  .landhinweis { font-size: 11px; color: #e5b45a; margin-top: 5px; }
-  .kaufgrid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 6px 8px; margin-bottom: 8px; }
-  .kaufgrid label { display: flex; flex-direction: column; font-size: 10.5px; color: var(--leise); gap: 3px; min-width: 0; }
+  .landhinweis { font-size: 11px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 5px 8px; margin-bottom: 7px; }
+  .landhinweis:empty { display: none; }
+  .kaufgrid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 6px 7px; margin-bottom: 8px; }
+  .kaufgrid label { display: flex; flex-direction: column; font-size: 10.5px; font-weight: 600; color: var(--leise); gap: 3px; min-width: 0; }
   .kaufgrid .voll { grid-column: 1 / -1; }
-  .kaufgrid input, select { font-size: 12px; font-weight: 400; padding: 6px 9px; border: 1px solid var(--rand); border-radius: 8px; width: 100%;
+  .kaufgrid input, select { font-size: 12px; font-weight: 500; padding: 6px 8px; border: 1px solid var(--rand); border-radius: 8px; width: 100%;
                             background: var(--feld); color: var(--tinte); font-family: inherit; }
-  select { font-weight: 600; color-scheme: dark; }
-  select:focus { outline: 2px solid var(--plus); outline-offset: -1px; }
-  .skunote { font-size: 11px; color: #e5b45a; line-height: 1.3; }
+  select { font-weight: 600; color-scheme: light; }
+  select:focus { outline: none; border-color: var(--akzent); box-shadow: 0 0 0 3px rgba(79,70,229,.15); }
+  .skunote { font-size: 11px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 7px; padding: 5px 8px; line-height: 1.35; }
   .kaufres:empty { display: none; }
   .kaufres { margin-bottom: 8px; }
   .kok, .kerr { font-size: 12px; font-weight: 600; padding: 8px 10px; border-radius: 9px; }
-  .kok { background: rgba(70,211,154,.14); color: var(--plus); }
+  .kok { background: var(--plus-bg); border: 1px solid var(--plus-bd); color: var(--plus); }
   .kok small { display: block; font-weight: 400; margin-top: 3px; color: var(--tinte); }
-  .kerr { background: rgba(255,128,115,.14); color: var(--minus); }
+  .kerr { background: var(--minus-bg); border: 1px solid var(--minus-bd); color: var(--minus); }
   .kauf:disabled { opacity: .6; cursor: default; }
   .einst { margin-top: 10px; }
-  .einst .er { display: flex; gap: 7px; align-items: center; margin: 6px 0; font-size: 12px; }
+  .einst .er { display: flex; gap: 7px; align-items: center; margin: 6px 0; font-size: 12px; color: var(--tinte); }
   .einst .er.sub { margin-left: 20px; }
-  .einst .er input[type=radio], .einst .er input[type=checkbox] { width: 14px; height: 14px; margin: 0; accent-color: var(--akzent); flex: 0 0 auto; }
+  .einst .er input[type=radio], .einst .er input[type=checkbox] { width: 14px; height: 14px; margin: 0; accent-color: var(--akzent); flex: 0 0 auto; box-shadow: none; }
   .einst .er input:not([type]) { width: 64px; padding: 4px 7px; font-size: 12px; margin-left: auto; }
   .einst .mut { display: block; line-height: 1.45; margin: 6px 0 4px; }
-  .landhinweis:empty { display: none; }
 
-  /* Ergebnis: die eine laute Stelle */
-  .erg { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; background: var(--flaeche); border-radius: 10px; padding: 7px 12px 7px; margin: 7px 0 7px; }
+  /* ProfitGo Hero-Ergebnis: auf einen Blick sichtbar, farbig akzentuiert */
+  .erg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; background: var(--flaeche); border: 1px solid var(--linie);
+         border-radius: 11px; padding: 10px 12px; margin: 8px 0 9px; transition: background-color .18s ease, border-color .18s ease; }
+  .erg.erg-pos { background: var(--plus-bg); border-color: var(--plus-bd); }
+  .erg.erg-neg { background: var(--minus-bg); border-color: var(--minus-bd); }
   .erg:empty { display: none; }
-  .erg .k { padding: 0; box-shadow: none; }
-  .erg .k i { font-size: 10.5px; }
-  .erg .k b { font-size: 13px; }
-  .erg .k.gross { padding-bottom: 3px; }
-  .erg .k.gross b { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
-  .erg .k.gross:first-of-type b, .erg .k.voll + .k.gross b { font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
-  .erg .k.voll { grid-column: 1 / -1; padding-bottom: 6px; }
+  .erg .k { padding: 0; box-shadow: none; background: transparent; }
+  .erg .k i { font-size: 10px; font-weight: 600; color: var(--leise); }
+  .erg .k b { font-size: 13px; color: var(--tinte); }
+  .erg .k.gross { padding-bottom: 6px; border-bottom: 1px solid rgba(15,28,48,.07); }
+  .erg .k.gross b { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+  .erg .k.gross:first-of-type b, .erg .k.voll + .k.gross b { font-size: 24px; font-weight: 800; letter-spacing: -.025em; line-height: 1.1; }
+  .erg .k.voll { grid-column: 1 / -1; padding-bottom: 4px; }
   .erg .k.voll i { font-size: 11px; line-height: 1.4; }
-  .erg > .neg { grid-column: 1 / -1; font-size: 12px; }
-  .kauf { width: 100%; background: var(--akzent); color: #fff; border: 0; border-radius: 9px; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
-  .kauf:hover { background: #24b079; }
+  .erg > .neg { grid-column: 1 / -1; font-size: 12px; font-weight: 600; }
+  .kauf { width: 100%; background: var(--akzent); color: #fff; border: 0; border-radius: 9px; padding: 10px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+          box-shadow: 0 1px 3px rgba(79,70,229,.25); }
+  .kauf:hover { background: var(--akzent-h); }
   a.kauf { color: #fff; }
 
   /* Aufklappbare Abschnitte und Tabellen */
   .box { border-top: 1px solid var(--linie); padding: 9px 0 2px; margin: 0; font-size: 12px; }
-  .box summary { cursor: pointer; font-weight: 600; font-size: 13px; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 7px; }
+  .box summary { cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--tinte); list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 7px; }
   .box summary::-webkit-details-marker { display: none; }
-  .box summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--leise); border-bottom: 1.5px solid var(--leise);
-                        transform: rotate(-45deg); flex: 0 0 auto; margin-right: 3px; }
+  .box summary::after { content: ""; width: 6px; height: 6px; border-right: 1.7px solid var(--leise); border-bottom: 1.7px solid var(--leise);
+                        transform: rotate(-45deg); flex: 0 0 auto; margin-right: 3px; transition: transform .15s ease; }
   .box[open] summary::after { transform: rotate(45deg); margin-top: -3px; }
   .box summary .mut, .box summary .neg { font-weight: 400; margin-right: auto; }
   table { width: 100%; border-collapse: collapse; }
   .fee { margin-bottom: 8px; }
-  .fee td { padding: 4px 0; border-top: 1px solid var(--linie); font-size: 12px; }
+  .fee td { padding: 4px 0; border-top: 1px solid var(--linie); font-size: 11.5px; color: var(--tinte); }
   .fee tr:first-child td { border-top: 0; }
-  .fee tr.sum td { font-weight: 600; border-top: 1px solid #6c7a73; }
+  .fee tr.sum td { font-weight: 700; border-top: 1px solid var(--rand); }
   .rechnung td { font-size: 11.5px; }
-  .rechnung .mut { display: block; font-size: 10.5px; line-height: 1.35; }
+  .rechnung .mut { display: block; font-size: 10px; line-height: 1.35; }
   .r { text-align: right; white-space: nowrap; vertical-align: top; }
-  .sub { margin: 4px 0 2px; font-size: 11px; font-weight: 600; color: var(--leise); }
-  .alle { font-size: 12px; margin: 2px 0 10px; }
-  .alle th { font-size: 10.5px; font-weight: 400; color: var(--leise); text-align: left; padding: 4px 6px; }
-  .alle td { padding: 6px; border-top: 1px solid var(--linie); cursor: pointer; }
-  .alle tr:hover td { background: #1a2320; }
-  .alle tr.an td { background: var(--flaeche); font-weight: 600; }
+  .sub { margin: 5px 0 3px; font-size: 10.5px; font-weight: 600; color: var(--leise); }
+  .alle { font-size: 12px; margin: 4px 0 10px; border: 1px solid var(--linie); border-radius: 10px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
+  .alle th { font-size: 10px; font-weight: 600; color: var(--leise); background: var(--flaeche); text-align: left; padding: 6px 8px; }
+  .alle td { padding: 6px 8px; border-top: 1px solid var(--linie); cursor: pointer; background: #fff; }
+  .alle tr:hover td { background: var(--flaeche); }
+  .alle tr.an td { background: var(--akzent-bg); font-weight: 600; }
   .sl { font-size: 11.5px; table-layout: fixed; margin-bottom: 6px; }
-  .sl th { font-size: 10.5px; font-weight: 400; color: var(--leise); text-align: left; padding: 3px 3px; }
+  .sl th { font-size: 10px; font-weight: 600; color: var(--leise); text-align: left; padding: 4px 3px; }
   .sl th.r { text-align: right; }
   .sl td { padding: 5px 3px; border-top: 1px solid var(--linie); vertical-align: top; line-height: 1.3; }
-  .sl tr.bb td { background: rgba(229,180,90,.11); }
-  .sl tr.ich td { background: var(--flaeche); }
+  .sl tr.bb td { background: var(--warn-bg); }
+  .sl tr.ich td { background: var(--akzent-bg); }
   .sl .nm { overflow: hidden; }
   .sl .nm a, .sl .nm span, .fr a { color: var(--tinte); text-decoration: none; font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sl .nm a:hover, .fr a:hover { text-decoration: underline; }
-  .sl .du { color: var(--plus); }
+  .sl .nm a:hover, .fr a:hover { color: var(--akzent); text-decoration: underline; }
+  .sl .du { color: var(--akzent); }
   .sl .nm small { display: block; color: var(--leise); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
   .sl .nm small .kn, .sl .nm small b { display: inline-block; margin-right: 3px; }
   .sl td b { font-weight: 600; }
   .sl td:first-child { color: var(--leise); }
-  .kn { display: inline-block; border-radius: 4px; padding: 0 4px; font-size: 9.5px; font-weight: 600; line-height: 1.5; }
-  .kn.fba { color: var(--plus); background: rgba(70,211,154,.14); }
-  .kn.fbm { color: #e5b45a; background: rgba(229,180,90,.14); }
+  .kn { display: inline-block; border-radius: 4px; padding: 0 4px; font-size: 9.5px; font-weight: 700; line-height: 1.5; }
+  .kn.fba { color: var(--plus); background: var(--plus-bg); }
+  .kn.fbm { color: var(--warn); background: var(--warn-bg); }
   .fr { display: flex; gap: 6px; align-items: center; padding: 4px 0; border-top: 1px solid var(--linie); font-size: 11.5px; }
   .fr a { display: inline; max-width: 130px; }
 
-  /* Verlauf (1.9.32: zugänglich, feste Lesezeile, Linien-Filter, EK, Keepa, Tabelle, Großansicht) */
+  /* Verlauf (hell, hoher Kontrast, zugänglich, Großansicht) */
   .chart-box { padding-bottom: 8px; }
   .chead { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-  .chead b { font-size: 13px; font-weight: 600; }
-  .chead-r { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-  .cbtn, .ckeepa { border: 1px solid var(--rand); background: var(--flaeche); color: var(--tinte); border-radius: 6px; padding: 2px 7px; font-size: 10.5px; font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.5; font-family: inherit; }
-  .cbtn:hover, .ckeepa:hover { background: #2d3933; border-color: #4a5952; }
+  .chead b { font-size: 12.5px; font-weight: 600; color: var(--tinte); }
+  .chead-r { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .cbtn, .ckeepa { border: 1px solid var(--rand); background: #fff; color: var(--tinte); border-radius: 6px; padding: 2px 7px; font-size: 10.5px; font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.5; font-family: inherit; }
+  .cbtn:hover, .ckeepa:hover { background: var(--akzent-bg); border-color: #c7d2fe; color: var(--akzent); }
+  .ckeepa-wrap { background: #fff; border: 1px solid var(--linie); border-radius: 8px; padding: 4px; overflow: hidden; margin-bottom: 5px; }
+  .ckeepa-img { width: 100%; height: auto; display: block; border-radius: 4px; }
   .cstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)); gap: 4px; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
   .cstats span { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 7px; padding: 4px 6px; }
   .cstats i { display: block; font-style: normal; font-size: 9.5px; color: var(--leise); line-height: 1.25; }
   .cstats b { display: block; font-size: 11.5px; font-weight: 600; color: var(--tinte); margin-top: 1px; }
-  .clese { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; background: #141c19; border: 1px solid var(--linie); border-radius: 7px; padding: 5px 8px; margin-bottom: 6px; font-size: 10.5px; line-height: 1.4; font-variant-numeric: tabular-nums; min-height: 24px; }
+  .clese { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; background: var(--flaeche); border: 1px solid var(--linie); border-radius: 7px; padding: 5px 8px; margin-bottom: 6px; font-size: 10.5px; line-height: 1.4; font-variant-numeric: tabular-nums; min-height: 24px; }
   .clese .ctag { color: var(--tinte); font-weight: 600; margin-right: 2px; }
   .clese .cw { display: inline-flex; align-items: center; gap: 3px; color: var(--leise); white-space: nowrap; }
   .clese .cw b { color: var(--tinte); font-weight: 600; }
   .cstrich { vertical-align: middle; flex: 0 0 auto; }
-  .cwrap { position: relative; border-radius: 6px; touch-action: pan-y; cursor: crosshair; }
-  .cwrap:focus-visible { outline: 2px solid var(--plus); outline-offset: 2px; }
+  .cwrap { position: relative; border-radius: 7px; background: #fff; border: 1px solid var(--linie); padding: 2px 0; touch-action: pan-y; cursor: crosshair; }
+  .cwrap:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
   .chart { width: 100%; height: auto; display: block; }
-  .chart.klein { margin-top: 4px; background: #1a2320; border-radius: 5px; }
-  .chart .ax { font: 7.5px -apple-system, "Segoe UI", sans-serif; fill: #9ba8a1; font-variant-numeric: tabular-nums; }
+  .chart.klein { margin-top: 4px; background: var(--flaeche); border: 1px solid var(--linie); border-radius: 6px; }
+  .chart .ax { font: 7.5px -apple-system, "Segoe UI", sans-serif; fill: #64748b; font-variant-numeric: tabular-nums; }
   .chart-box.gross .chart .ax { font-size: 10px; }
-  .chart .ekax { fill: #c4b5fd; font-weight: 600; }
-  .chart .gitter { stroke: #2a3530; stroke-width: 1; }
-  .chart .flaeche { fill: rgba(240,243,240,.07); }
+  .chart .ekax { fill: #7c3aed; font-weight: 700; }
+  .chart .gitter { stroke: #e2e8f0; stroke-width: 1; }
+  .chart .flaeche { fill: rgba(79,70,229,.08); }
   .chart .hover { stroke: var(--tinte); stroke-width: .8; stroke-dasharray: 2 2; }
   .leg { display: flex; gap: 4px 6px; flex-wrap: wrap; font-size: 10.5px; color: var(--leise); margin-top: 6px; align-items: center; }
   .leg i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; }
-  .cleg-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--linie); background: var(--flaeche); color: var(--tinte); border-radius: 6px; padding: 2px 6px; font-size: 10.5px; cursor: pointer; font-family: inherit; }
-  .cleg-btn:hover { border-color: #4a5952; }
-  .cleg-btn[aria-pressed="false"] { opacity: .42; text-decoration: line-through; background: transparent; }
+  .cleg-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--linie); background: #fff; color: var(--tinte); border-radius: 6px; padding: 2px 6px; font-size: 10.5px; cursor: pointer; font-family: inherit; }
+  .cleg-btn:hover { border-color: var(--akzent); background: var(--akzent-bg); }
+  .cleg-btn[aria-pressed="false"] { opacity: .45; text-decoration: line-through; background: var(--flaeche); }
   .cleg-fest { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; font-size: 10.5px; color: var(--leise); }
   .ctbl-det { margin-top: 6px; border-top: 1px solid var(--linie); padding-top: 4px; }
   .ctbl-det summary { cursor: pointer; font-size: 11px; font-weight: 600; color: var(--leise); padding: 3px 0; list-style: none; display: flex; align-items: center; justify-content: space-between; }
   .ctbl-det summary::-webkit-details-marker { display: none; }
-  .ctbl-det summary:hover { color: var(--tinte); }
-  .ctbl-wrap { max-height: 180px; overflow: auto; margin-top: 4px; border: 1px solid var(--linie); border-radius: 6px; }
+  .ctbl-det summary:hover { color: var(--akzent); }
+  .ctbl-wrap { max-height: 180px; overflow: auto; margin-top: 4px; border: 1px solid var(--linie); border-radius: 7px; }
   .chart-box.gross .ctbl-wrap { max-height: 220px; }
   .ctbl { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
   .ctbl th, .ctbl td { padding: 4px 6px; border-top: 1px solid var(--linie); text-align: left; white-space: nowrap; }
-  .ctbl thead th { position: sticky; top: 0; background: #18211d; color: var(--leise); font-weight: 600; border-top: 0; }
+  .ctbl thead th { position: sticky; top: 0; background: var(--flaeche); color: var(--leise); font-weight: 600; border-top: 0; }
   .ctbl tbody th { font-weight: 500; color: var(--leise); }
   .ctbl .r { text-align: right; }
   .cmodal[hidden] { display: none; }
-  .cmodal { position: fixed; inset: 0; z-index: 2147483647; background: rgba(7,12,10,.76); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
-  .cm-dialog { width: min(820px, 100%); max-height: 92vh; overflow: auto; background: var(--bg); color: var(--tinte); border: 1px solid var(--rand); border-radius: 14px; padding: 16px 18px 14px; box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+  .cmodal { position: fixed; inset: 0; z-index: 2147483647; background: rgba(15,28,48,.52); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
+  .cm-dialog { width: min(820px, 100%); max-height: 92vh; overflow: auto; background: var(--bg); color: var(--tinte); border: 1px solid var(--linie); border-radius: 14px; padding: 16px 18px 14px; box-shadow: 0 24px 64px rgba(15,28,48,.28); font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
   .cm-dialog .chart-box.gross { border-top: 0; padding-top: 0; }
   .cm-dialog .cstats b { font-size: 14px; }
   .cm-dialog .clese { font-size: 12px; padding: 7px 10px; }

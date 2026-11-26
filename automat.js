@@ -134,9 +134,18 @@ async function fsFormLesen(appId) {
   const html = await r.text();
   if (scAbgemeldet(r)) return { fehler: "Anmeldung verloren" };
   if (SC_RECHTE.test(html)) return { fehler: "HTTP 403 Recht „Produkte hinzufügen“ fehlt", rechte: true };
-  const csrf = scCsrf(html);
-  const f = await scJson("/hz/getRestrictionForm?&deviceType=DESKTOP", "POST", { applicationId: appId }, csrf);
-  const body = f.json && ((f.json.result || f.json).body);
+  if (FS_SOFORT_FREI.test(html)) return { frei: true };
+  const csrf = scCsrf(html) || fsFormToken(html);
+  let f = await scJson("/hz/getRestrictionForm?deviceType=DESKTOP", "POST", { applicationId: appId }, csrf);
+  let body = f.json && ((f.json.result || f.json).body);
+  if (!(body && body.moduleMap)) {
+    f = await scJson("/hz/getRestrictionForm?applicationId=" + encodeURIComponent(appId) + "&deviceType=DESKTOP", "POST", { applicationId: appId }, csrf);
+    body = f.json && ((f.json.result || f.json).body);
+  }
+  if (!(body && body.moduleMap)) {
+    f = await scJson("/hz/getRestrictionForm?applicationId=" + encodeURIComponent(appId) + "&deviceType=DESKTOP", "GET", null, csrf);
+    body = f.json && ((f.json.result || f.json).body);
+  }
   if (!(body && body.moduleMap)) return { fehler: "Formular (getRestrictionForm) nicht lesbar: HTTP " + f.status };
   return { body, csrf };
 }
@@ -182,6 +191,7 @@ async function fsAnlegen(a, konto, ctx) {
   }
   if (!appId) return Object.assign(out, { fehler: "nach dem Antrag kein Entwurf (applicationId) – HTTP " + p.status });
   const f = await fsFormLesen(appId);
+  if (f.frei) return Object.assign(out, { frei: true, application_id: appId, meldung: "Amazon: sofort genehmigt (Verkäuferleistung)" });
   if (f.fehler) return Object.assign(out, { application_id: appId }, f);
   return Object.assign(out, fsFormAuswerten(f.body), { application_id: appId });
 }

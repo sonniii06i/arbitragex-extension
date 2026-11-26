@@ -447,6 +447,7 @@ async function saveInner() {
     return;
   }
 
+  const manSell = num(document.getElementById("axx-b-sell").value);
   // Anlegen. Das Backend stößt Listing + Prep im Hintergrund an (AUTO_LIST_PREP).
   const r = await api("/api/purchases", "POST", {
     asin: state.data.asin,
@@ -456,7 +457,8 @@ async function saveInner() {
     source_url: url,
     cost: cost,
     quantity: qty,
-    sell_price: num(document.getElementById("axx-b-sell").value),
+    sell_price: manSell,
+    sell_price_manual: !!(manSell && manSell > 0),
     order_number: (document.getElementById("axx-b-order").value || "").trim(),
     ...skuWahl(),
     // Brutto/Netto so, wie der Profit-Rechner oben gerechnet hat — sonst zeigte das
