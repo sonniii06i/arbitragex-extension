@@ -249,23 +249,23 @@
      (#axx-launch) bleibt im Seiten-DOM — Position, Ziehen und das Ausblenden durch panel.js hängen an ihm. */
   const CHIP_CSS =
     ":host{all:initial;position:fixed;right:22px;bottom:22px;z-index:2147483646;display:block}" +
-    ".chip{all:initial;display:flex;align-items:stretch;background:#151c19;border:1px solid #0b100e;border-radius:11px;" +
-      "box-shadow:0 12px 28px -10px rgba(8,12,10,.6),0 1px 4px rgba(8,12,10,.3);" +
+    ".chip{all:initial;display:flex;align-items:stretch;background:#0c1a2e;border:1px solid rgba(255,255,255,.12);border-radius:10px;" +
+      "box-shadow:0 14px 32px -10px rgba(12,26,46,.55),0 2px 6px rgba(12,26,46,.24);" +
       'font:600 12.5px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;' +
-      "font-variant-numeric:tabular-nums;color:#f0f3f0;overflow:hidden;user-select:none;-webkit-user-select:none}" +
-    ":host(.dragging) .chip{opacity:.9;box-shadow:0 16px 34px -10px rgba(8,12,10,.7)}" +
+      "font-variant-numeric:tabular-nums;color:#f8fafc;overflow:hidden;user-select:none;-webkit-user-select:none}" +
+    ":host(.dragging) .chip{opacity:.92;box-shadow:0 18px 38px -10px rgba(12,26,46,.7)}" +
     "button{appearance:none;-webkit-appearance:none;border:none;border-radius:0;margin:0;min-width:0;background:transparent;" +
-      "color:#f0f3f0;padding:0 11px;height:36px;cursor:copy;font:inherit;letter-spacing:.02em;text-transform:none;white-space:nowrap}" +
-    ".axx-chip-ax{background:#1f9d6b;color:#fff;font-weight:700;letter-spacing:.04em;padding:0 12px;cursor:pointer}" +
-    ".axx-chip-ax:hover{background:#24b079}" +
-    ".axx-cp:hover{background:#1f2824}" +
-    ".axx-cp.ean{color:#98a59e;font-weight:500;padding-left:2px}" +
-    ".axx-cp.copied{background:#1f9d6b!important;color:#fff}" +
-    ".axx-grip{display:flex;align-items:center;padding:0 9px;color:#5d6a63;cursor:grab;font-size:13px;border-left:1px solid #2c3732}" +
+      "color:#f8fafc;padding:0 11px;height:36px;cursor:copy;font:inherit;letter-spacing:.02em;text-transform:none;white-space:nowrap}" +
+    ".axx-chip-ax{background:linear-gradient(135deg,#818cf8 0%,#6366f1 50%,#4f46e5 100%);color:#fff;font-weight:800;letter-spacing:.04em;padding:0 12px;cursor:pointer}" +
+    ".axx-chip-ax:hover{filter:brightness(1.08)}" +
+    ".axx-cp:hover{background:rgba(255,255,255,.09)}" +
+    ".axx-cp.ean{color:#cbd5e1;font-weight:500;padding-left:2px}" +
+    ".axx-cp.copied{background:#047857!important;color:#fff}" +
+    ".axx-grip{display:flex;align-items:center;padding:0 9px;color:#94a3b8;cursor:grab;font-size:13px;border-left:1px solid rgba(255,255,255,.10)}" +
     ".axx-grip:active{cursor:grabbing}" +
-    ".axx-lnk{display:flex;align-items:center;padding:0 11px;color:#98a59e;text-decoration:none;font-size:12.5px;font-weight:500;" +
-      "border-left:1px solid #2c3732}" +
-    ".axx-lnk:hover{background:#1f2824;color:#f0f3f0}";
+    ".axx-lnk{display:flex;align-items:center;padding:0 11px;color:#cbd5e1;text-decoration:none;font-size:12.5px;font-weight:500;" +
+      "border-left:1px solid rgba(255,255,255,.10)}" +
+    ".axx-lnk:hover{background:rgba(255,255,255,.09);color:#ffffff}";
   // Elemente des Chips liegen im Shadow-DOM; chip.querySelector fände sie von außen nicht.
   function chipFeld(chip, sel) {
     return chip ? (chip.shadowRoot || chip).querySelector(sel) : null;
