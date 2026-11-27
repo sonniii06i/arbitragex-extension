@@ -21,7 +21,7 @@
   const BASE = "https://arbitragex.de";
   const CHIP_ID = "axx-launch";
   const SHOP_AUTOMATIK = false;                     // Panel auf Shop-Seiten nur noch über das Popup                    // Chip aus content.js, solange das Panel da ist ausgeblendet
-  const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, ekQuelle: null, prep: 0, ziel: 20,
+  const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, ekNettoAuto: false, ekQuelle: null, prep: 0, ziel: 20,
               menge: 1, kanal: "fba", versandDe: 4.99, versandEu: 14.99, zu: false, docked: true, pos: null, host: null, root: null,
               fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false, chartQuelle: "eigen",
               kurz: null, modus: "profit", einstAuf: false, offen: {},
@@ -30,7 +30,8 @@
   function ekTagHtml() {
     const acc = S.d && S.d.eigener_ek && S.d.eigener_ek.eingabe > 0 ? S.d.eigener_ek : null;
     if (acc) {
-      const lab = EK_QUELL_LABEL[acc.quelle] || "Account";
+      const landZusatz = acc.land && acc.land !== "de" ? " · " + String(acc.land).toUpperCase() : "";
+      const lab = (EK_QUELL_LABEL[acc.quelle] || "Account") + landZusatz;
       const dat = acc.datum ? " (" + new Date(acc.datum * 1000).toLocaleDateString("de-DE") + ")" : "";
       const gleich = S.ek != null && Math.abs(S.ek - Number(acc.eingabe)) < 0.01 && (!!S.ekNetto === !acc.eingabe_brutto);
       if (gleich) return '<span class="ektag ok" title="Gespeicherter EK aus deinem Arbitragex-Konto: ' + esc(lab) + dat + ' – jederzeit überschreibbar">' + esc(lab) + "</span>";
@@ -1224,6 +1225,7 @@
         if (!acc) return;
         S.ek = Number(acc.eingabe);
         S.ekNetto = !acc.eingabe_brutto;
+        S.ekNettoAuto = !acc.eingabe_brutto && !(S.d && S.d.ek_netto);
         S.ekQuelle = acc.quelle || "account";
         ek.value = String(S.ek).replace(".", ",");
         if ($("netto")) $("netto").checked = S.ekNetto;
@@ -1233,10 +1235,19 @@
       };
       const rb0 = $("ekReset");
       if (rb0) rb0.onclick = ekReset;
-      ek.oninput = () => { S.ek = num(ek.value); S.ekQuelle = S.ek != null ? "manuell" : null; rechnen(); merkeEk(); ekTagUpd(); };
+      ek.oninput = () => {
+        S.ek = num(ek.value);
+        S.ekQuelle = S.ek != null ? "manuell" : null;
+        if (S.ekNettoAuto) {
+          S.ekNetto = !!(S.d && S.d.ek_netto);
+          S.ekNettoAuto = false;
+          if ($("netto")) $("netto").checked = S.ekNetto;
+        }
+        rechnen(); merkeEk(); ekTagUpd();
+      };
       $("vk").oninput = () => { S.vk[S.mk] = num($("vk").value); rechnen(); };
       $("menge").oninput = () => { const v = num($("menge").value); S.menge = v && v > 0 ? Math.floor(v) : 1; rechnen(); merkeEk(); };
-      $("netto").onchange = (e) => { S.ekNetto = e.target.checked; rechnen(); merkeEk(); ekTagUpd(); };
+      $("netto").onchange = (e) => { S.ekNetto = e.target.checked; S.ekNettoAuto = false; rechnen(); merkeEk(); ekTagUpd(); };
       $("url").oninput = (e) => { S.url = e.target.value.trim(); rechnen(); merkeEk(); };
       if ($("bestellnr")) $("bestellnr").oninput = (e) => { S.kauf.nr = e.target.value; };
       if ($("listvk")) $("listvk").oninput = (e) => { S.kauf.vk = e.target.value; };
@@ -1431,7 +1442,7 @@
       try { chrome.storage.local.remove(key); } catch (e) { }
       return;
     }
-    store.set({ [key]: { ek: S.ek, ekNetto: !!S.ekNetto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle || "manuell", ts: Date.now() } });
+    store.set({ [key]: { ek: S.ek, ekNetto: !!S.ekNetto, ekNettoAuto: !!S.ekNettoAuto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle || "manuell", ts: Date.now() } });
   }
 
   function opts(k, kanal) {
@@ -1460,6 +1471,10 @@
       if (lh) {
         const l = AxxRechner.einkaufsland(S.url), teile = [];
         if (l !== "de" && !S.ekNetto) teile.push("Einkauf im Ausland (" + l.toUpperCase() + "): Brutto-EK ist Kostenbasis, keine deutsche Vorsteuer");
+        if (S.ekNetto && S.ekNettoAuto) {
+          const accL = S.d && S.d.eigener_ek && S.d.eigener_ek.land && S.d.eigener_ek.land !== "de" ? " (" + String(S.d.eigener_ek.land).toUpperCase() + ")" : "";
+          teile.push("Konto-EK" + accL + " als Netto/Kostenbasis geladen (ohne DE-Vorsteuer) – für DE-Brutto-EK einfach überschreiben oder Haken entfernen");
+        }
         if (S.kanal === "fbm" && fbmVersand(k) >= 30) teile.push("⚠ Versand " + eur(fbmVersand(k)) + " eingetragen – wirklich so hoch oder Komma vergessen?");
         lh.textContent = teile.join(" · ");
       }
@@ -1474,7 +1489,7 @@
         erg.innerHTML = gebHinweis +
         '<div class="k gross"><i>Gewinn / Stück</i><b class="' + (e.gewinn == null ? "" : e.gewinn >= 0 ? "pos" : "neg") + '">' + eur(e.gewinn) + "</b></div>" +
         '<div class="k gross"><i>ROI · Nettomarge</i><b>' + pct(e.roi) + " · " + pct(e.marge) + "</b></div>" +
-        '<div class="k"><i>Max-EK (' + S.ziel + ' % ROI)</i><b>' + eur(e.maxEk) + "</b></div>" +
+        '<div class="k"><i>Max-EK' + (S.ekNetto ? " netto" : "") + ' (' + S.ziel + ' % ROI)</i><b>' + eur(e.maxEk) + "</b></div>" +
         '<div class="k"><i>Break-even VK</i><b>' + eur(e.breakEvenVk) + "</b></div>" +
         (e.menge > 1 ? '<div class="k voll"><i>Gesamt ' + e.menge + " Stück · Einsatz " + eur(e.einsatz) + '</i><b class="' +
           (e.gesamt >= 0 ? "pos" : "neg") + '">' + eur(e.gesamt) + "</b></div>" : "");
@@ -1496,7 +1511,7 @@
         '<div class="sub">Gebühren einzeln</div><table class="fee">' +
         e.aufstellung.map((z) => "<tr><td>" + esc(z[0]) + '</td><td class="r">' + eur(z[1]) + "</td></tr>").join("") +
         '<tr class="sum"><td>Amazon-Gebühren netto</td><td class="r">' + eur(e.gebuehrNetto) + "</td></tr>" +
-        '<tr><td>Break-even EK</td><td class="r">' + eur(e.breakEvenEk) + "</td></tr>" +
+        '<tr><td>Break-even EK' + (S.ekNetto ? " netto" : "") + '</td><td class="r">' + eur(e.breakEvenEk) + "</td></tr>" +
         '<tr><td>Auszahlung Amazon</td><td class="r">' + eur(e.auszahlung) + "</td></tr></table>";
       // Profit zu den Preisen der anderen Verkaeufer, mit MEINEM EK
       root.querySelectorAll("td[data-preis]").forEach((td) => {
@@ -1608,7 +1623,7 @@
       const tippt = S.root && S.root.activeElement && S.root.activeElement.tagName === "INPUT";
       if (S.host && !tippt) zeichne();
     });
-    if (!frisch) { S.ek = null; S.url = ""; }
+    if (!frisch) { S.ek = null; S.url = ""; S.ekNettoAuto = false; }
     zeichne();
     aodLaden(S.mk);                                // parallel: Namen + Stock der Seite
     const seite = seitenMarkt();
@@ -1627,7 +1642,7 @@
       S.fehler = "Profit nicht verfügbar: " + esc((r.data && r.data.error) || r.error || ("HTTP " + r.status));
     } else {
       const d = r.data;
-      S.d = d; S.ekNetto = !!d.ek_netto; S.prep = d.prep || 0; S.ustModus = d.ust_modus || "oss";
+      S.d = d; S.ekNetto = !!d.ek_netto; S.ekNettoAuto = false; S.prep = d.prep || 0; S.ustModus = d.ust_modus || "oss";
       if (d.fbm_versand_de != null) S.versandDe = Number(d.fbm_versand_de);
       if (d.fbm_versand_eu != null) S.versandEu = Number(d.fbm_versand_eu);
       MPS.forEach((k) => { const m = d.maerkte[k] || {}; S.vk[k] = m.buybox != null ? m.buybox : null; S.tarif[k] = !!m.efn_vorwahl; });
@@ -1637,21 +1652,24 @@
       const acc = d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
       const accTs = acc && acc.datum ? Number(acc.datum) * 1000 : 0;
       if (!frisch) {
-        // 1.9.40: Dauerhafter EK-Abgleich zwischen Arbitragex-Konto (d.eigener_ek) und lokalem Input (kein 30-Tage-Verfall).
-        // Neuerer Konto-EK (z. B. neuer Einkauf in App/anderem Browser) gewinnt; eigene Eingabe im Feld überschreibt lokal jederzeit.
+        // 1.9.42: Nicht-manuelle Cache-Einträge (z. B. gespiegelter Mail-/Konto-EK) immer frisch vom Server ziehen;
+        // echte manuelle Eingaben bleiben dauerhaft lokal, bis ein neuerer Konto-EK eintrifft.
         const lokalDa = v && v.ek != null && v.ek > 0;
-        const kontoNeuer = acc && (!lokalDa || accTs > (Number(v.ts) || 0) + 5000);
+        const lokalManuell = !!(lokalDa && (v.quelle === "manuell" || v.quelle === "shop"));
+        const kontoNeuer = acc && (!lokalManuell || accTs > (Number(v.ts) || 0) + 5000);
         if (kontoNeuer) {
           S.ek = Number(acc.eingabe);
           S.ekNetto = !acc.eingabe_brutto;
+          S.ekNettoAuto = !acc.eingabe_brutto && !d.ek_netto;
           S.ekQuelle = acc.quelle || "account";
           if (v && v.menge > 1) S.menge = v.menge;
           if (v && v.url) S.url = v.url;
           else if (acc.source_url) S.url = acc.source_url;
-          store.set({ ["axxEk:" + asin]: { ek: S.ek, ekNetto: !!S.ekNetto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle, ts: Math.max(accTs, Date.now()) } });
+          store.set({ ["axxEk:" + asin]: { ek: S.ek, ekNetto: !!S.ekNetto, ekNettoAuto: !!S.ekNettoAuto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle, ts: accTs || Date.now() } });
         } else if (lokalDa) {
           S.ek = Number(v.ek);
           if (typeof v.ekNetto === "boolean") S.ekNetto = v.ekNetto;
+          S.ekNettoAuto = !!v.ekNettoAuto;
           S.menge = v.menge || 1;
           S.url = v.url || (acc && acc.source_url) || "";
           S.ekQuelle = v.quelle || "manuell";

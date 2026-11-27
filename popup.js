@@ -578,6 +578,7 @@ async function profitStart() {
   const d = r.data;
   state.profit = d;
   state.ekNetto = !!d.ek_netto;
+  state.ekNettoAuto = false;
   state.ustModus = d.ust_modus || "oss";
   state.prep = d.prep || 0;
   state.ziel = 20;
@@ -601,15 +602,17 @@ async function profitStart() {
   try {
     const st = await chrome.storage.local.get(["axxKanal:" + d.asin, "axxEk:" + d.asin]);
     if (st["axxKanal:" + d.asin] === "fbm") state.kanal = "fbm";
-    // 1.9.40: Account-EK (d.eigener_ek) und dauerhaften lokalen EK abgleichen (kein 30-Tage-Verfall)
+    // 1.9.42: Account-EK (d.eigener_ek) und dauerhaften lokalen EK abgleichen; nicht-manuelle Caches immer frisch vom Server ziehen
     const v = st["axxEk:" + d.asin];
     const acc = d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
     const accTs = acc && acc.datum ? Number(acc.datum) * 1000 : 0;
     const lokalDa = v && v.ek != null && v.ek > 0;
-    const kontoNeuer = acc && (!lokalDa || accTs > (Number(v.ts) || 0) + 5000);
+    const lokalManuell = !!(lokalDa && (v.quelle === "manuell" || v.quelle === "shop"));
+    const kontoNeuer = acc && (!lokalManuell || accTs > (Number(v.ts) || 0) + 5000);
     const f = document.getElementById("axx-b-cost");
     if (kontoNeuer) {
       state.ekNetto = !acc.eingabe_brutto;
+      state.ekNettoAuto = !acc.eingabe_brutto && !d.ek_netto;
       if (f && (!f.value || f.dataset.shoppreis || !f.dataset.manuell)) {
         f.value = String(acc.eingabe).replace(".", ",");
         delete f.dataset.shoppreis;
@@ -617,11 +620,12 @@ async function profitStart() {
       const uEl = document.getElementById("axx-b-url");
       if (uEl && !uEl.value && acc.source_url) uEl.value = acc.source_url;
       chrome.storage.local.set({ ["axxEk:" + d.asin]: {
-        ek: Number(acc.eingabe), ekNetto: !!state.ekNetto,
-        menge: (v && v.menge) || 1, url: (v && v.url) || acc.source_url || "", quelle: acc.quelle || "account", ts: Math.max(accTs, Date.now())
+        ek: Number(acc.eingabe), ekNetto: !!state.ekNetto, ekNettoAuto: !!state.ekNettoAuto,
+        menge: (v && v.menge) || 1, url: (v && v.url) || acc.source_url || "", quelle: acc.quelle || "account", ts: accTs || Date.now()
       } });
     } else if (lokalDa) {
       if (typeof v.ekNetto === "boolean") state.ekNetto = v.ekNetto;
+      state.ekNettoAuto = !!v.ekNettoAuto;
       if (f && (!f.value || f.dataset.shoppreis)) {
         f.value = String(v.ek).replace(".", ",");
         delete f.dataset.shoppreis;
@@ -680,7 +684,8 @@ function renderProfit() {
     const curEk = num((document.getElementById("axx-b-cost") || {}).value);
     const L = { einkauf: "Einkauf", zeitraum: "Zeitraum", mail: "Mail", bestellung: "Bestellung", produkt: "Account", asin: "Account", account: "Account" };
     if (acc) {
-      const lab = L[acc.quelle] || "Account";
+      const landZusatz = acc.land && acc.land !== "de" ? " · " + String(acc.land).toUpperCase() : "";
+      const lab = (L[acc.quelle] || "Account") + landZusatz;
       const dat = acc.datum ? " (" + new Date(acc.datum * 1000).toLocaleDateString("de-DE") + ")" : "";
       const gleich = curEk != null && Math.abs(curEk - Number(acc.eingabe)) < 0.01 && (!!state.ekNetto === !acc.eingabe_brutto);
       if (gleich) return '<span class="ektag ok" title="Gespeicherter EK aus deinem Arbitragex-Konto: ' + esc(lab) + dat + ' – jederzeit überschreibbar">' + esc(lab) + "</span>";
@@ -779,17 +784,18 @@ function renderProfit() {
       const acc = state.profit && state.profit.eigener_ek && state.profit.eigener_ek.eingabe > 0 ? state.profit.eigener_ek : null;
       if (!acc) return;
       state.ekNetto = !acc.eingabe_brutto;
+      state.ekNettoAuto = !acc.eingabe_brutto && !(state.profit && state.profit.ek_netto);
       const s = String(acc.eingabe).replace(".", ",");
       if ($("axx-b-cost")) { $("axx-b-cost").value = s; delete $("axx-b-cost").dataset.manuell; }
       if ($("axx-pf-ek")) $("axx-pf-ek").value = s;
       if ($("axx-pf-netto")) $("axx-pf-netto").checked = state.ekNetto;
-      ekMerken();
+      ekMerken(acc.quelle || "account", acc.datum ? Number(acc.datum) * 1000 : Date.now());
       profitRechnen();
       ekTagUpd();
     });
   };
   ekTagUpd();
-  $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; ekMerken(); ekTagUpd(); profitRechnen(); });
+  $("axx-pf-netto").addEventListener("change", (e) => { state.ekNetto = e.target.checked; state.ekNettoAuto = false; ekMerken(); ekTagUpd(); profitRechnen(); });
   if ($("axx-pf-prep")) {
     $("axx-pf-prep").addEventListener("input", (e) => { const v = num(e.target.value); state.prep = v == null ? 0 : v; profitRechnen(); });
     $("axx-pf-prep").addEventListener("change", () => {
@@ -822,7 +828,16 @@ function renderProfit() {
       el.addEventListener("input", (ev) => {
         if (el.dataset.shoppreis) delete el.dataset.shoppreis;
         if (ev && ev.isTrusted) {
-          if (bEk && (id === "axx-b-cost" || id === "axx-pf-ek")) bEk.dataset.manuell = "1";
+          if (bEk && (id === "axx-b-cost" || id === "axx-pf-ek")) {
+            bEk.dataset.manuell = "1";
+            if (state.ekNettoAuto) {
+              state.ekNetto = !!(state.profit && state.profit.ek_netto);
+              state.ekNettoAuto = false;
+              if ($("axx-pf-netto")) $("axx-pf-netto").checked = state.ekNetto;
+              ekTagUpd();
+              profitRechnen();
+            }
+          }
           ekMerken();
         }
       });
@@ -859,7 +874,7 @@ function profitRechnen() {
       t.innerHTML =
         k("Gewinn / Stück", sel.gewinn != null ? eur(sel.gewinn) : "EK eintragen", sel.gewinn == null ? "pp-mut" : sel.gewinn >= 0 ? "pp-pos" : "pp-neg", true) +
         k("ROI · Nettomarge", sel.gewinn != null ? pct(sel.roi) + " · " + pct(sel.marge) : "—", "", true) +
-        k("Max-EK (" + (state.ziel || 0) + " % ROI)", eur(sel.maxEk)) +
+        k("Max-EK" + (state.ekNetto ? " netto" : "") + " (" + (state.ziel || 0) + " % ROI)", eur(sel.maxEk)) +
         k("Break-even VK", sel.breakEvenVk != null ? eur(sel.breakEvenVk) : "—") +
         (sel.menge > 1 && sel.gesamt != null ? '<div class="pp-t voll"><i>Gesamt ' + sel.menge + " Stück · Einsatz " + eur(sel.einsatz) +
           '</i><b class="' + (sel.gesamt >= 0 ? "pp-pos" : "pp-neg") + '">' + eur(sel.gesamt) + "</b></div>" : "");
@@ -870,6 +885,10 @@ function profitRechnen() {
   if (h) {
     const teile = [];
     if (land !== "de" && !state.ekNetto) teile.push("Einkauf im Ausland (" + land.toUpperCase() + "): Brutto-EK ist Kostenbasis, keine deutsche Vorsteuer.");
+    if (state.ekNetto && state.ekNettoAuto) {
+      const accL = d.eigener_ek && d.eigener_ek.land && d.eigener_ek.land !== "de" ? " (" + String(d.eigener_ek.land).toUpperCase() + ")" : "";
+      teile.push("Konto-EK" + accL + " als Netto/Kostenbasis geladen (ohne DE-Vorsteuer) – für DE-Brutto-EK einfach überschreiben oder Haken entfernen.");
+    }
     const bbDe = (d.maerkte.de || {}).buybox;
     if (sel && sel.ok && sel.fbaFehlt) teile.push("⚠ Amazon liefert für diesen Artikel keine FBA-Gebühr – sie fehlt in der Rechnung, der Gewinn ist zu hoch.");
     if (sel && sel.ok && sel.fbaTarif) teile.push("FBA-Gebühr nach Amazon-Tarifkarte aus den Packmaßen (Amazon nennt keinen Wert).");
@@ -1060,7 +1079,7 @@ function einstellungWire() {
 
 /* EK, den man im Panel oder Popup eingetippt hat, bleibt je ASIN dauerhaft gespeichert (kein 30-Tage-Verfall)
    und gleicht sich zusätzlich mit dem Konto-EK (d.eigener_ek) ab. Panel und Popup teilen sich axxEk:<asin>. */
-function ekMerken() {
+function ekMerken(quelleArg, tsArg) {
   try {
     const asin = state.data && state.data.asin;
     if (!asin) return;
@@ -1068,7 +1087,9 @@ function ekMerken() {
     const ek = num((document.getElementById("axx-b-cost") || {}).value);
     const url = ((document.getElementById("axx-b-url") || {}).value || "").trim();
     if (ek == null && !url) { chrome.storage.local.remove(key); return; }
-    chrome.storage.local.set({ [key]: { ek, ekNetto: !!state.ekNetto, ts: Date.now(), quelle: "manuell",
+    const q = typeof quelleArg === "string" ? quelleArg : "manuell";
+    const ts = typeof tsArg === "number" && tsArg > 0 ? tsArg : Date.now();
+    chrome.storage.local.set({ [key]: { ek, ekNetto: !!state.ekNetto, ekNettoAuto: !!state.ekNettoAuto, ts, quelle: q,
       menge: parseInt((document.getElementById("axx-b-qty") || {}).value, 10) || 1,
       url } });
   } catch (e) { }
@@ -1085,6 +1106,7 @@ async function ekAusPanel() {
       f.value = String(v.ek).replace(".", ",");
       delete f.dataset.shoppreis;
       if (typeof v.ekNetto === "boolean") state.ekNetto = v.ekNetto;
+      state.ekNettoAuto = !!v.ekNettoAuto;
       f.dispatchEvent(new Event("input"));
     }
     const u = document.getElementById("axx-b-url");
