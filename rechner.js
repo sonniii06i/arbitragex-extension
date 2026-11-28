@@ -67,8 +67,9 @@
     if (!mod || !mod.ok) return { ok: false, fehler: (kanal === "fba" && efn ? "EFN-Gebühren nicht ermittelbar" : "Gebühren nicht ermittelbar") + (mod && mod.fehler ? ": " + mod.fehler : "") };
     if (vk == null || !(vk > 0)) return { ok: false, fehler: "VK eintragen" };
     const ust = o.ekUst || 19;
-    const vonEingabe = (x) => o.ekNetto ? x : (o.land !== "de" ? x : x / (1 + ust / 100));
-    const zuEingabe = (x) => o.ekNetto ? x : (o.land !== "de" ? x : x * (1 + ust / 100));
+    // 1.9.46: Ausschließlich die eigene Brutto/Netto-Auswahl (EK netto) zählt – keine automatische Sonderregel für Auslands-URLs.
+    const vonEingabe = (x) => o.ekNetto ? x : x / (1 + ust / 100);
+    const zuEingabe = (x) => o.ekNetto ? x : x * (1 + ust / 100);
     const vf = o.vorsteuer === false ? mod.vf : 1;
     const prep = kanal === "fbm" ? 0 : (o.prep || 0);
     const versand = kanal === "fbm" ? (o.versand || 0) : 0;

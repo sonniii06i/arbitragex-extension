@@ -581,6 +581,12 @@ async function profitStart() {
   state.ekNettoAuto = false;
   state.ustModus = d.ust_modus || "oss";
   state.prep = d.prep || 0;
+  if (d.markup != null) {
+    state.markup = Number(d.markup);
+    const mkc = document.getElementById("axx-mkc"); if (mkc) mkc.value = state.markup;
+    const mke = document.getElementById("axx-einst-markup"); if (mke) mke.value = String(state.markup).replace(".", ",");
+    applyMarkup();
+  }
   state.ziel = 20;
   try {
     const p = await chrome.storage.local.get(["axxZielRoi"]);
@@ -884,10 +890,9 @@ function profitRechnen() {
   const h = document.getElementById("pp-hinweis");
   if (h) {
     const teile = [];
-    if (land !== "de" && !state.ekNetto) teile.push("Einkauf im Ausland (" + land.toUpperCase() + "): Brutto-EK ist Kostenbasis, keine deutsche Vorsteuer.");
     if (state.ekNetto && state.ekNettoAuto) {
       const accL = d.eigener_ek && d.eigener_ek.land && d.eigener_ek.land !== "de" ? " (" + String(d.eigener_ek.land).toUpperCase() + ")" : "";
-      teile.push("Konto-EK" + accL + " als Netto/Kostenbasis geladen (ohne DE-Vorsteuer) – für DE-Brutto-EK einfach überschreiben oder Haken entfernen.");
+      teile.push("Konto-EK" + accL + " als Netto/Kostenbasis geladen – für Brutto-EK einfach überschreiben oder Haken entfernen.");
     }
     const bbDe = (d.maerkte.de || {}).buybox;
     if (sel && sel.ok && sel.fbaFehlt) teile.push("⚠ Amazon liefert für diesen Artikel keine FBA-Gebühr – sie fehlt in der Rechnung, der Gewinn ist zu hoch.");
@@ -942,6 +947,8 @@ function einstellungBlock() {
       "> Zusätzlich Profit-Rechner</label>" +
     '<label class="axx-einst-r sub"><input type="checkbox" id="axx-einst-panel"' + (state.panel ? " checked" : "") +
       (state.modus === "einkauf" ? " disabled" : "") + "> Panel direkt auf der Amazon-Produktseite (wie SellerAmp)</label>" +
+    '<label class="axx-einst-r">Listing-Aufschlag auf Buy Box %<input id="axx-einst-markup" inputmode="decimal" style="width:60px" value="' +
+      (state.profit && state.profit.markup != null ? String(state.profit.markup).replace(".", ",") : String(state.markup || 30).replace(".", ",")) + '" placeholder="30"></label>' +
     '<label class="axx-einst-r">Prep-/Inbound-Kosten je Stück €<input id="axx-einst-prep" inputmode="decimal" style="width:60px" value="' +
       (state.profit ? String(state.profit.prep).replace(".", ",") : "") + '" placeholder="aus Arbitragex"></label>' +
     '<label class="axx-einst-r">FBM-Versand DE netto €<input id="axx-einst-fbm-de" inputmode="decimal" style="width:60px" value="' +
@@ -1045,6 +1052,19 @@ function einstellungWire() {
     const p = document.getElementById("axx-einst-panel");
     if (p) p.disabled = r.value === "einkauf";
   }));
+  const mkE = document.getElementById("axx-einst-markup");
+  if (mkE) mkE.addEventListener("change", async () => {
+    const v = num(mkE.value);
+    if (v == null || v < 0 || v > 500) return;
+    const r = await api("/api/ext/einstellungen", "POST", { markup: v });
+    mkE.style.outline = r && r.ok ? "2px solid #047857" : "2px solid #b42318";
+    if (r && r.ok) {
+      state.markup = v;
+      if (state.profit) state.profit.markup = v;
+      const mkc = document.getElementById("axx-mkc"); if (mkc) mkc.value = v;
+      applyMarkup();
+    }
+  });
   const pr = document.getElementById("axx-einst-prep");
   if (pr) pr.addEventListener("change", async () => {
     const v = num(pr.value);

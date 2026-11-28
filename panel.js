@@ -21,11 +21,42 @@
   const BASE = "https://arbitragex.de";
   const CHIP_ID = "axx-launch";
   const SHOP_AUTOMATIK = false;                     // Panel auf Shop-Seiten nur noch über das Popup                    // Chip aus content.js, solange das Panel da ist ausgeblendet
-  const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, ekNettoAuto: false, ekQuelle: null, prep: 0, ziel: 20,
+  const S = { asin: null, d: null, mk: null, vk: {}, tarif: {}, ekNetto: false, ekNettoAuto: false, ekQuelle: null, prep: 0, markup: 30, ziel: 20,
               menge: 1, kanal: "fba", versandDe: 4.99, versandEu: 14.99, zu: false, docked: true, zieht: false, pos: null, host: null, root: null,
               fehler: null, aod: {}, aodLaeuft: {}, frisch: {}, bereich: 90, chartAus: {}, chartGross: false, chartQuelle: "eigen",
               kurz: null, modus: "profit", einstAuf: false, offen: {},
               kauf: { d: null, sku: null, cond: null, chan: null, nr: "", laedt: false, sendet: false }, kaufMeldung: "" };
+  const CACHE_TTL_MS = 10 * 60 * 1000;
+  function seiteKatalog() {
+    if (!IST_AMAZON) return {};
+    const out = {};
+    const tEl = document.getElementById("productTitle") || document.getElementById("title");
+    if (tEl) { const t = tEl.textContent.replace(/\s+/g, " ").trim(); if (t) out.titel = t.slice(0, 180); }
+    const imgEl = document.getElementById("landingImage") || document.getElementById("imgBlkFront") || document.querySelector("#imgTagWrapperId img");
+    if (imgEl) { const src = imgEl.getAttribute("src") || imgEl.getAttribute("data-old-hires") || ""; if (/^https?:\/\//i.test(src)) out.bild = src; }
+    return out;
+  }
+  async function cacheLesen(asin) {
+    try {
+      const k = "axxProfitCache:" + asin;
+      const st = await store.get([k]);
+      const e = st[k];
+      if (e && e.d && Date.now() - (e.ts || 0) < CACHE_TTL_MS) return e.d;
+    } catch (e) { }
+    return null;
+  }
+  async function cacheSchreiben(asin, d) {
+    if (!asin || !d || d.error) return;
+    try {
+      const k = "axxProfitCache:" + asin;
+      const st = await store.get(["axxProfitCacheIdx"]);
+      const idx = Array.isArray(st.axxProfitCacheIdx) ? st.axxProfitCacheIdx.filter((x) => x !== asin) : [];
+      idx.push(asin);
+      const weg = idx.length > 30 ? idx.splice(0, idx.length - 30) : [];
+      if (weg.length) try { chrome.storage.local.remove(weg.map((a) => "axxProfitCache:" + a)); } catch (e) { }
+      await store.set({ [k]: { ts: Date.now(), d }, axxProfitCacheIdx: idx });
+    } catch (e) { }
+  }
   const EK_QUELL_LABEL = { einkauf: "Einkauf", zeitraum: "Zeitraum", mail: "Mail", bestellung: "Bestellung", produkt: "Account", asin: "Account", account: "Account" };
   function ekTagHtml() {
     const acc = S.d && S.d.eigener_ek && S.d.eigener_ek.eingabe > 0 ? S.d.eigener_ek : null;
@@ -485,7 +516,7 @@
     const gedockt = istGedockt();
     p.className = gedockt ? "p docked" : "p";
     lage();
-    const k = Object.assign({}, S.d && S.d.katalog || {});
+    const k = Object.assign(seiteKatalog(), S.d && S.d.katalog || {});
     if (!k.ean && S.ean) k.ean = S.ean;
     const svgIcon = (d) => '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + "</svg>";
     const icoUndock = svgIcon('<path d="M9.5 2.5h4v4"/><path d="M13.5 2.5L7.5 8.5"/><path d="M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/>');
@@ -582,7 +613,7 @@
   }
 
   function leiste() {
-    const k = Object.assign({}, S.d && S.d.katalog || {});
+    const k = Object.assign(seiteKatalog(), S.d && S.d.katalog || {});
     if (!k.ean && S.ean) k.ean = S.ean;
     return '<div class="leiste"><button class="ax" id="auf" title="Profit-Panel öffnen">AX</button>' +
       (S.asin ? '<button data-copy="' + esc(S.asin) + '" title="ASIN kopieren">' + esc(S.asin) + "</button>" : "") +
@@ -1285,7 +1316,16 @@
       $("netto").onchange = (e) => { S.ekNetto = e.target.checked; S.ekNettoAuto = false; rechnen(); merkeEk(); ekTagUpd(); };
       $("url").oninput = (e) => { S.url = e.target.value.trim(); rechnen(); merkeEk(); };
       if ($("bestellnr")) $("bestellnr").oninput = (e) => { S.kauf.nr = e.target.value; };
-      if ($("listvk")) $("listvk").oninput = (e) => { S.kauf.vk = e.target.value; };
+      if ($("mkEditBtn")) $("mkEditBtn").onclick = () => {
+        S.einstAuf = true;
+        const det = root.getElementById("einst");
+        if (det) {
+          det.open = true;
+          det.scrollIntoView({ block: "start", behavior: "smooth" });
+          const inp = root.getElementById("einst-markup");
+          if (inp) setTimeout(() => { inp.focus(); inp.select(); }, 180);
+        }
+      };
       if ($("sku")) $("sku").onchange = (e) => { S.kauf.sku = e.target.value; zeichne(); };
       if ($("cond")) $("cond").onchange = (e) => { S.kauf.cond = e.target.value; };
       if ($("kchan")) $("kchan").onchange = (e) => { S.kauf.chan = e.target.value; };
@@ -1352,16 +1392,17 @@
     }
     const neu = k.d && k.sku === "__neu__";
     const aktChan = k.chan || (S.kanal === "fbm" ? "FBM" : "FBA");
+    const mkTxt = String(S.markup != null ? S.markup : 30).replace(".", ",");
     return '<div class="kaufgrid">' +
       '<label>Bestellt bei<input id="url" type="url" placeholder="Link zum Einkauf (Shop/Bestellung)" value="' + esc(S.url || "") + '"></label>' +
       '<label>Bestellnr.<input id="bestellnr" type="text" placeholder="optional" value="' + esc(k.nr || "") + '"></label>' +
-      (abo ? '<label class="voll">Listing-Preis DE € (leer = Buy Box + Aufschlag)<input id="listvk" inputmode="decimal" placeholder="auto = Buy Box + Aufschlag" value="' + esc(k.vk || "") + '"></label>' +
-        '<label class="voll">SKU<select id="sku"' + (k.d ? "" : " disabled") + ">" + skuOpt + "</select></label>" +
+      (abo ? '<label class="voll">SKU<select id="sku"' + (k.d ? "" : " disabled") + ">" + skuOpt + "</select></label>" +
         (neu ? '<label>Zustand der neuen SKU<select id="cond">' + zust + "</select></label>" +
           '<label>Versandart (Listing)<select id="kchan">' +
             '<option value="FBA"' + (aktChan !== "FBM" ? " selected" : "") + ">FBA (Amazon)</option>" +
             '<option value="FBM"' + (aktChan === "FBM" ? " selected" : "") + ">FBM (Eigenversand)</option>" +
           "</select></label>" : "") +
+        '<div class="mkzeile voll"><span>Auto-Listing: <b>Buy Box + ' + esc(mkTxt) + ' %</b></span><button type="button" class="mkedit" id="mkEditBtn">⚙ Aufschlag</button></div>' +
         (hinweis ? '<div class="skunote voll">' + esc(hinweis) + "</div>" : "") : "") +
       "</div>";
   }
@@ -1391,13 +1432,11 @@
     const wahl = S.kauf.sku === "__neu__"
       ? { new_sku: true, condition: S.kauf.cond || "new_new", list_channel: listCh, announce: listCh !== "FBM" }
       : (S.kauf.sku ? { sku: S.kauf.sku } : {});
-    // 1.9.37: Profit-Rechner-VK (#vk) darf nie den Listing-Preis ueberschreiben (sonst geht bei
-    // fehlender Buy Box oder Test-Kalkulation der Aufschlag verloren). Nur das eigene Feld #listvk zaehlt.
-    const eigenVkRaw = num(S.kauf.vk);
-    const eigenVk = (eigenVkRaw != null && eigenVkRaw > 0) ? eigenVkRaw : null;
+    // 1.9.46: Ein einziges VK-Feld (Rechner-VK bleibt Kalkulation); Auto-Listing nutzt immer Buy Box + Aufschlag (%) aus Einstellungen.
     const r = await api("/api/purchases", "POST", Object.assign({
       asin: S.asin, title: k.titel, image: k.bild, source: shop, source_url: url, cost: S.ek, quantity: S.menge || 1,
-      sell_price: eigenVk, sell_price_manual: eigenVk != null, order_number: (S.kauf.nr || "").trim(), cost_gross: S.ekNetto ? 0 : 1 }, wahl));
+      sell_price: null, sell_price_manual: false, markup: S.markup != null ? S.markup : 30,
+      order_number: (S.kauf.nr || "").trim(), cost_gross: S.ekNetto ? 0 : 1 }, wahl));
     S.kauf.sendet = false;
     if (!r.ok) {
       btn.disabled = false; btn.textContent = "Einkauf registrieren";
@@ -1420,21 +1459,43 @@
     zeichne();
   }
 
-  /* --- Einstellungen im Panel: dieselben Schalter wie im Popup, gleicher Speicher (chrome.storage) --- */
+  /* --- Einstellungen im Panel: dieselben Schalter wie im Popup, gleicher Speicher (chrome.storage + Arbitragex-Konto) --- */
   function einstellungen() {
+    const mkVal = S.d && S.d.markup != null ? S.d.markup : S.markup;
+    const mkPreset = (v) => '<button type="button" class="mkp' + (Math.abs(Number(mkVal) - v) < 0.05 ? " an" : "") + '" data-mkp="' + v + '">+' + v + " %</button>";
     return '<details class="box sec einst" id="einst"' + (S.einstAuf ? " open" : "") + '><summary><span>Extension-Einstellungen</span><span class="sec-meta">⚙</span></summary><div class="sec-body">' +
+      '<div class="einst-blk"><b>Listing-Aufschlag auf Buy Box</b>' +
+        '<div class="er mkrow"><div class="mkpresets">' + mkPreset(20) + mkPreset(30) + mkPreset(40) + '</div>' +
+        '<span class="mkinp-wrap"><input id="einst-markup" inputmode="decimal" value="' + String(mkVal).replace(".", ",") + '" placeholder="30"><i>%</i></span></div>' +
+        '<div class="mut">Gilt automatisch beim „Einkauf registrieren“ (Buy Box + Aufschlag %) und wird im Arbitragex-Konto gespeichert.</div>' +
+      "</div>" +
       '<label class="er"><input type="radio" name="modus" value="einkauf"' + (S.modus === "einkauf" ? " checked" : "") + "> Nur Einkäufe ankündigen (Einkauf, Listing, Prep)</label>" +
       '<label class="er"><input type="radio" name="modus" value="profit"' + (S.modus !== "einkauf" ? " checked" : "") + "> Zusätzlich Profit-Rechner</label>" +
       '<label class="er sub"><input type="checkbox" id="einst-panel" checked' + (S.modus === "einkauf" ? " disabled" : "") + "> Panel direkt auf der Amazon-Produktseite (rechts verankert)</label>" +
       '<label class="er">Prep-/Inbound-Kosten je Stück €<input id="einst-prep" inputmode="decimal" value="' + String(S.prep).replace(".", ",") + '" placeholder="aus Arbitragex"></label>' +
       '<label class="er">FBM-Versand DE netto €<input id="einst-fbm-de" inputmode="decimal" value="' + String(S.d && S.d.fbm_versand_de != null ? S.d.fbm_versand_de : S.versandDe).replace(".", ",") + '" placeholder="4,99"></label>' +
       '<label class="er">FBM-Versand EU netto €<input id="einst-fbm-eu" inputmode="decimal" value="' + String(S.d && S.d.fbm_versand_eu != null ? S.d.fbm_versand_eu : S.versandEu).replace(".", ",") + '" placeholder="14,99"></label>' +
-      '<div class="mut">Mit „Nur Einkäufe“ oder ohne den Haken verschwindet das Panel von der Seite; zurück geht es über das Extension-Symbol oben rechts. ' +
-      "Prep und Standard-FBM-Versand (DE/EU) werden im Arbitragex-Konto gespeichert; EFN/Pan-EU und CEP stellst du in Arbitragex unter Einstellungen ein.</div></div></details>";
+      '<div class="mut">Aufschlag, Prep und FBM-Versand (DE/EU) werden im Arbitragex-Konto gespeichert; EFN/Pan-EU und CEP stellst du in <a href="' + BASE + '/#einstellungen" target="_blank" rel="noopener">Arbitragex → Einstellungen ↗</a> ein.</div></div></details>';
   }
   function einstellungenVerdrahten(root) {
     const det = root.getElementById("einst");
     if (det) det.ontoggle = () => { S.einstAuf = det.open; };
+    const mkInp = root.getElementById("einst-markup");
+    const saveMarkup = async (v) => {
+      if (v == null || v < 0 || v > 500) return;
+      const r = await api("/api/ext/einstellungen", "POST", { markup: v });
+      if (mkInp) mkInp.style.outline = r && r.ok ? "2px solid #047857" : "2px solid #b42318";
+      if (r && r.ok) {
+        S.markup = v;
+        if (S.d) S.d.markup = v;
+        if (mkInp) mkInp.value = String(v).replace(".", ",");
+        root.querySelectorAll("[data-mkp]").forEach((b) => b.classList.toggle("an", Math.abs(Number(b.getAttribute("data-mkp")) - v) < 0.05));
+        const zl = root.querySelector(".mkzeile b");
+        if (zl) zl.textContent = "Buy Box + " + String(v).replace(".", ",") + " %";
+      }
+    };
+    if (mkInp) mkInp.onchange = () => saveMarkup(num(mkInp.value));
+    root.querySelectorAll("[data-mkp]").forEach((b) => b.onclick = () => saveMarkup(Number(b.getAttribute("data-mkp"))));
     root.querySelectorAll('input[name="modus"]').forEach((r) => r.onchange = () => {
       S.modus = r.value;
       store.set({ axxModus: r.value });
@@ -1504,11 +1565,10 @@
       if (gs) gs.textContent = e.ok && e.gebuehrNetto != null ? "− " + eur(e.gebuehrNetto) + " netto" : "—";
       const lh = root.getElementById("landhinweis");
       if (lh) {
-        const l = AxxRechner.einkaufsland(S.url), teile = [];
-        if (l !== "de" && !S.ekNetto) teile.push("Einkauf im Ausland (" + l.toUpperCase() + "): Brutto-EK ist Kostenbasis, keine deutsche Vorsteuer");
+        const teile = [];
         if (S.ekNetto && S.ekNettoAuto) {
           const accL = S.d && S.d.eigener_ek && S.d.eigener_ek.land && S.d.eigener_ek.land !== "de" ? " (" + String(S.d.eigener_ek.land).toUpperCase() + ")" : "";
-          teile.push("Konto-EK" + accL + " als Netto/Kostenbasis geladen (ohne DE-Vorsteuer) – für DE-Brutto-EK einfach überschreiben oder Haken entfernen");
+          teile.push("Konto-EK" + accL + " als Netto/Kostenbasis geladen – für Brutto-EK einfach überschreiben oder Haken entfernen");
         }
         if (S.kanal === "fbm" && fbmVersand(k) >= 30) teile.push("⚠ Versand " + eur(fbmVersand(k)) + " eingetragen – wirklich so hoch oder Komma vergessen?");
         lh.textContent = teile.join(" · ");
@@ -1529,14 +1589,14 @@
         (e.menge > 1 ? '<div class="k voll erg-gesamt"><i>Gesamt ' + e.menge + " Stück · Einsatz " + eur(e.einsatz) + '</i><b class="' +
           (e.gesamt >= 0 ? "pos" : "neg") + '">' + eur(e.gesamt) + "</b></div>" : "");
       }
-      const ekBrutto = e.ekNetto != null ? (AxxRechner.einkaufsland(S.url) !== "de" || S.ekNetto ? e.ekNetto : e.ekNetto * (1 + (S.d.ek_ust || 19) / 100)) : null;
+      const ekBrutto = e.ekNetto != null ? (S.ekNetto ? e.ekNetto : e.ekNetto * (1 + (S.d.ek_ust || 19) / 100)) : null;
       const vstEk = ekBrutto != null ? ekBrutto - e.ekNetto : 0;
       const vstGeb = e.vorsteuerGebuehren ? e.gebuehrUst : 0;
       const zahllast = e.vkUst - vstEk - vstGeb;
       const vkB = S.vk[S.mk];
       if (auf) auf.innerHTML = (e.gewinn != null ? '<table class="fee rechnung">' +
         '<tr><td>Verkaufspreis</td><td class="r">' + eurGenau(vkB) + "</td></tr>" +
-        '<tr><td>− Einkaufspreis' + (ekBrutto !== e.ekNetto ? "" : " (Kostenbasis)") + '</td><td class="r">' + eurGenau(-ekBrutto) + "</td></tr>" +
+        '<tr><td>− Einkaufspreis' + (S.ekNetto ? " (netto)" : "") + '</td><td class="r">' + eurGenau(-ekBrutto) + "</td></tr>" +
         '<tr><td>− Amazon-Gebühren netto</td><td class="r">' + eurGenau(-e.gebuehrNetto) + "</td></tr>" +
         '<tr><td>− USt auf Gebühren</td><td class="r">' + eurGenau(-e.gebuehrUst) + "</td></tr>" +
         '<tr><td>− USt-Zahllast <span class="mut">(Verkauf ' + e.vkUstSatz + " %" + (S.mk !== "de" ? (e.vkUstModus === "de" ? " DE-USt" : e.kanal === "fba" && !e.efn ? " lokal" : " OSS") : "") + " " + eurGenau(e.vkUst) + " − EK " + eurGenau(vstEk) + " − Gebühren " + eurGenau(vstGeb) + ')</span></td><td class="r">' + eurGenau(-zahllast) + "</td></tr>" +
@@ -1696,23 +1756,86 @@
     });
   }
 
-  /* --- Laden -------------------------------------------------------------- */
+  /* --- Laden (1.9.46: Sofort-Cache + paralleler SKU-Prefetch + Live-DOM-Kopf) ---- */
+  function datenAnwenden(d, st, frisch) {
+    S.d = d; S.ekNetto = !!d.ek_netto; S.ekNettoAuto = false; S.prep = d.prep || 0; S.ustModus = d.ust_modus || "oss";
+    if (d.markup != null) S.markup = Number(d.markup);
+    if (d.fbm_versand_de != null) S.versandDe = Number(d.fbm_versand_de);
+    if (d.fbm_versand_eu != null) S.versandEu = Number(d.fbm_versand_eu);
+    if (d.katalog && d.katalog.ean && !S.ean) S.ean = String(d.katalog.ean);
+    MPS.forEach((k) => { const m = d.maerkte[k] || {}; S.vk[k] = m.buybox != null ? m.buybox : null; S.tarif[k] = !!m.efn_vorwahl; });
+    if (!(d.maerkte[S.mk] || {}).vorhanden) S.mk = MPS.find((k) => (d.maerkte[k] || {}).vorhanden) || S.mk;
+    const v = st["axxEk:" + S.asin];
+    const acc = d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
+    const accTs = acc && acc.datum ? Number(acc.datum) * 1000 : 0;
+    if (!frisch) {
+      const lokalDa = v && v.ek != null && v.ek > 0;
+      const lokalManuell = !!(lokalDa && (v.quelle === "manuell" || v.quelle === "shop"));
+      const kontoNeuer = acc && (!lokalManuell || accTs > (Number(v.ts) || 0) + 5000);
+      if (kontoNeuer) {
+        S.ek = Number(acc.eingabe);
+        S.ekNetto = !acc.eingabe_brutto;
+        S.ekNettoAuto = !acc.eingabe_brutto && !d.ek_netto;
+        S.ekQuelle = acc.quelle || "account";
+        if (v && v.menge > 1) S.menge = v.menge;
+        if (v && v.url) S.url = v.url;
+        else if (acc.source_url) S.url = acc.source_url;
+        store.set({ ["axxEk:" + S.asin]: { ek: S.ek, ekNetto: !!S.ekNetto, ekNettoAuto: !!S.ekNettoAuto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle, ts: accTs || Date.now() } });
+      } else if (lokalDa) {
+        S.ek = Number(v.ek);
+        if (typeof v.ekNetto === "boolean") S.ekNetto = v.ekNetto;
+        S.ekNettoAuto = !!v.ekNettoAuto;
+        S.menge = v.menge || 1;
+        S.url = v.url || (acc && acc.source_url) || "";
+        S.ekQuelle = v.quelle || "manuell";
+      } else if (v && v.url) {
+        S.url = v.url;
+        S.menge = v.menge || 1;
+      } else if (acc && acc.source_url) {
+        S.url = acc.source_url;
+      }
+    }
+    if (S.shop) {
+      if (!S.url) S.url = S.shop.url;
+      if (S.ek == null && S.shop.preis) { S.ek = S.shop.preis; S.ekQuelle = "shop"; }
+    }
+    S.kanal = st["axxKanal:" + S.asin] === "fbm" ? "fbm" : "fba";
+    frischAnwenden();
+  }
+
   async function laden(asin, frisch) {
     S.asin = asin; S.d = null; S.fehler = null; S.mk = seitenMarkt(); S.aod = {}; S.frisch = {}; S.kurz = null; S.ean = null; S.eanFehlt = false;
-    S.kauf = { d: null, sku: null, cond: null, nr: "", vk: "", laedt: false, sendet: false }; S.kaufMeldung = "";
-    // EAN gesondert holen: der Katalogaufruf der Analyse nennt sie nicht immer, die Leiste braucht sie sofort
-    api("/api/ext/ean?asin=" + encodeURIComponent(asin)).then((r) => {
-      if (S.asin !== asin || !r || !r.ok || !r.data) return;
-      if (r.data.ean) S.ean = String(r.data.ean); else S.eanFehlt = true;     // Amazon führt keine (z. B. GTIN-Befreiung)
-      const tippt = S.root && S.root.activeElement && S.root.activeElement.tagName === "INPUT";
-      if (S.host && !tippt) zeichne();
-    });
+    S.kauf = { d: null, sku: null, cond: null, nr: "", laedt: false, sendet: false }; S.kaufMeldung = "";
     if (!frisch) { S.ek = null; S.url = ""; S.ekNettoAuto = false; }
-    zeichne();
-    aodLaden(S.mk);                                // parallel: Namen + Stock der Seite
+
+    // 1.9.46: Lokalen Cache + EK-Speicher sofort lesen (< 20 ms), parallel dazu Live-Abruf + SKUs + AOD starten
+    const stP = store.get(["axxEk:" + asin, "axxKanal:" + asin]);
+    const cacheP = frisch ? Promise.resolve(null) : cacheLesen(asin);
     const seite = seitenMarkt();
-    const r = await api("/api/ext/profit?asin=" + encodeURIComponent(asin) + "&maerkte=" + seite + (frisch ? "&frisch=1" : ""));
-    if (S.asin !== asin) return;                  // inzwischen andere Seite
+    const profitP = api("/api/ext/profit?asin=" + encodeURIComponent(asin) + "&maerkte=" + seite + (frisch ? "&frisch=1" : ""));
+    aodLaden(S.mk);
+    skusLaden(asin);                                // parallel statt erst nach /api/ext/profit
+
+    const [st, gecacht] = await Promise.all([stP, cacheP]);
+    if (S.asin !== asin) return;
+    if (gecacht && !gecacht.error && gecacht.maerkte) {
+      datenAnwenden(gecacht, st, false);
+      zeichne();
+    } else {
+      zeichne();                                    // zeigt bereits 0-ms Live-DOM-Kopf (Bild, Titel, ASIN, Links)
+    }
+
+    if (!S.ean) {
+      api("/api/ext/ean?asin=" + encodeURIComponent(asin)).then((r) => {
+        if (S.asin !== asin || !r || !r.ok || !r.data) return;
+        if (r.data.ean) S.ean = String(r.data.ean); else S.eanFehlt = true;
+        const tippt = S.root && S.root.activeElement && S.root.activeElement.tagName === "INPUT";
+        if (S.host && !tippt) zeichne();
+      });
+    }
+
+    const r = await profitP;
+    if (S.asin !== asin) return;
     if (r.status === 401) {
       S.fehler = '<b>Kostenloser Profit-Rechner</b><br>E-Mail bestätigen, Amazon-Konto verbinden – fertig.<br>' +
         '<a class="kauf" style="display:block;text-align:center;text-decoration:none;margin:8px 0 4px" href="' + BASE + '/amazon-profit-rechner#start" target="_blank" rel="noopener">Kostenlos registrieren</a>' +
@@ -1723,55 +1846,14 @@
     } else if (r.status === 402) {
       S.fehler = 'Für dieses Konto ist der Profit-Rechner gerade nicht verfügbar. <a href="' + BASE + '/extension" target="_blank" rel="noopener">Konto ansehen</a>';
     } else if (!r.ok || !r.data || r.data.error) {
-      S.fehler = "Profit nicht verfügbar: " + esc((r.data && r.data.error) || r.error || ("HTTP " + r.status));
+      if (!S.d) S.fehler = "Profit nicht verfügbar: " + esc((r.data && r.data.error) || r.error || ("HTTP " + r.status));
     } else {
-      const d = r.data;
-      S.d = d; S.ekNetto = !!d.ek_netto; S.ekNettoAuto = false; S.prep = d.prep || 0; S.ustModus = d.ust_modus || "oss";
-      if (d.fbm_versand_de != null) S.versandDe = Number(d.fbm_versand_de);
-      if (d.fbm_versand_eu != null) S.versandEu = Number(d.fbm_versand_eu);
-      MPS.forEach((k) => { const m = d.maerkte[k] || {}; S.vk[k] = m.buybox != null ? m.buybox : null; S.tarif[k] = !!m.efn_vorwahl; });
-      if (!(d.maerkte[S.mk] || {}).vorhanden) S.mk = MPS.find((k) => (d.maerkte[k] || {}).vorhanden) || S.mk;
-      const st = await store.get(["axxEk:" + asin, "axxKanal:" + asin]);
-      const v = st["axxEk:" + asin];
-      const acc = d.eigener_ek && d.eigener_ek.eingabe > 0 ? d.eigener_ek : null;
-      const accTs = acc && acc.datum ? Number(acc.datum) * 1000 : 0;
-      if (!frisch) {
-        // 1.9.42: Nicht-manuelle Cache-Einträge (z. B. gespiegelter Mail-/Konto-EK) immer frisch vom Server ziehen;
-        // echte manuelle Eingaben bleiben dauerhaft lokal, bis ein neuerer Konto-EK eintrifft.
-        const lokalDa = v && v.ek != null && v.ek > 0;
-        const lokalManuell = !!(lokalDa && (v.quelle === "manuell" || v.quelle === "shop"));
-        const kontoNeuer = acc && (!lokalManuell || accTs > (Number(v.ts) || 0) + 5000);
-        if (kontoNeuer) {
-          S.ek = Number(acc.eingabe);
-          S.ekNetto = !acc.eingabe_brutto;
-          S.ekNettoAuto = !acc.eingabe_brutto && !d.ek_netto;
-          S.ekQuelle = acc.quelle || "account";
-          if (v && v.menge > 1) S.menge = v.menge;
-          if (v && v.url) S.url = v.url;
-          else if (acc.source_url) S.url = acc.source_url;
-          store.set({ ["axxEk:" + asin]: { ek: S.ek, ekNetto: !!S.ekNetto, ekNettoAuto: !!S.ekNettoAuto, menge: S.menge, url: S.url || "", quelle: S.ekQuelle, ts: accTs || Date.now() } });
-        } else if (lokalDa) {
-          S.ek = Number(v.ek);
-          if (typeof v.ekNetto === "boolean") S.ekNetto = v.ekNetto;
-          S.ekNettoAuto = !!v.ekNettoAuto;
-          S.menge = v.menge || 1;
-          S.url = v.url || (acc && acc.source_url) || "";
-          S.ekQuelle = v.quelle || "manuell";
-        } else if (v && v.url) {
-          S.url = v.url;
-          S.menge = v.menge || 1;
-        } else if (acc && acc.source_url) {
-          S.url = acc.source_url;
-        }
-      }
-      if (S.shop) {                                  // Shop-Produktseite: dieser Shop ist die Bezugsquelle
-        if (!S.url) S.url = S.shop.url;
-        if (S.ek == null && S.shop.preis) { S.ek = S.shop.preis; S.ekQuelle = "shop"; }
-      }
-      S.kanal = st["axxKanal:" + asin] === "fbm" ? "fbm" : "fba";
-      frischAnwenden();
-      zeichne();
-      // Stufe 2: alle Märkte (FR/IT/ES …) nachladen, Eingaben bleiben stehen
+      const tipptJetzt = S.root && document.activeElement === S.host && S.root.activeElement && S.root.activeElement.tagName === "INPUT";
+      const hatteCache = !!S.d;
+      datenAnwenden(r.data, st, frisch || (hatteCache && S.ek != null));
+      cacheSchreiben(asin, r.data);
+      if (tipptJetzt) { S.wartet = true; rechnen(); } else zeichne();
+      // Stufe 2: restliche EU-Märkte (FR/IT/ES …) im Hintergrund nachladen
       S.ladeRest = true;
       const voll = await api("/api/ext/profit?asin=" + encodeURIComponent(asin) + (frisch ? "&frisch=1" : ""));
       S.ladeRest = false;
@@ -1779,16 +1861,18 @@
       if (voll.ok && voll.data && !voll.data.error) {
         const alt = S.d;
         S.d = voll.data;
+        if (S.d.markup != null) S.markup = Number(S.d.markup);
         frischAnwenden();
         MPS.forEach((k) => {
           const m = S.d.maerkte[k] || {};
           if (!(alt.maerkte || {})[k]) { S.vk[k] = m.buybox != null ? m.buybox : null; S.tarif[k] = !!m.efn_vorwahl; }
         });
+        cacheSchreiben(asin, voll.data);
       } else {
         S.restFehler = (voll.data && voll.data.error) || voll.error || ("HTTP " + voll.status);
       }
       if (S.root && document.activeElement === S.host && S.root.activeElement && S.root.activeElement.tagName === "INPUT") {
-        S.wartet = true; rechnen(); return;      // nicht mitten im Tippen neu zeichnen
+        S.wartet = true; rechnen(); return;
       }
     }
     zeichne();
@@ -2121,6 +2205,20 @@
   select { font-weight: 600; color-scheme: light; }
   select:focus { outline: none; border-color: var(--akzent); box-shadow: 0 0 0 3px rgba(79,70,229,.16); }
   .skunote { font-size: 11px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 6px 8px; line-height: 1.35; }
+  .mkzeile { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 5px 8px; background: var(--flaeche); border: 1px solid var(--linie); border-radius: 7px; font-size: 10.5px; color: var(--leise); }
+  .mkzeile b { color: var(--tinte); font-weight: 700; }
+  .mkedit { border: 1px solid var(--akzent-bd); background: var(--papier); color: var(--akzent); border-radius: 5px; padding: 2px 7px; font-size: 10px; font-weight: 600; cursor: pointer; }
+  .mkedit:hover { background: var(--akzent-bg); border-color: var(--akzent); }
+  .einst-blk { padding: 8px 9px; margin-bottom: 8px; background: var(--flaeche); border: 1px solid var(--linie); border-radius: 8px; }
+  .einst-blk > b { display: block; font-size: 11px; color: var(--tinte); margin-bottom: 5px; }
+  .mkrow { margin: 0 0 4px !important; gap: 6px !important; }
+  .mkpresets { display: inline-flex; gap: 3px; }
+  .mkp { border: 1px solid var(--rand); background: var(--papier); color: var(--tinte); border-radius: 6px; padding: 4px 7px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .mkp:hover { border-color: var(--akzent); color: var(--akzent); }
+  .mkp.an { background: var(--akzent); border-color: var(--akzent); color: #fff; }
+  .mkinp-wrap { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
+  .mkinp-wrap input { width: 54px !important; margin-left: 0 !important; text-align: right; }
+  .mkinp-wrap i { font-style: normal; font-size: 11px; font-weight: 600; color: var(--leise); }
   .kaufres:empty { display: none; }
   .kaufres { margin-bottom: 8px; }
   .kok, .kerr { font-size: 11.5px; font-weight: 600; padding: 8px 10px; border-radius: 8px; }
