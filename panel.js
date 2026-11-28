@@ -40,11 +40,7 @@
     if (S.ek != null) return '<span class="ektag" title="Für diese ASIN dauerhaft im Browser gespeichert">gemerkt</span>';
     return "";
   }
-  const secOffen = (k) => {
-    if (k === "kauf" && S.kaufMeldung) return true;
-    if (S.offen && typeof S.offen[k] === "boolean") return S.offen[k];
-    return k === "kauf" && !IST_AMAZON;
-  };
+  const secOffen = (k) => !(S.offen && S.offen[k] === false);
   const fbmVersand = (k) => (k || S.mk) === "de" ? S.versandDe : S.versandEu;
 
   // Kurz: ab 1.000 € ohne Cent, sonst ohne „,00“ (Betreiber 27.10.: „kein ,00“)
@@ -510,15 +506,15 @@
       '<button id="min" title="Zur AX-Leiste verkleinern" aria-label="Zur AX-Leiste verkleinern">' + icoMin + "</button>" +
       '<button id="x" title="Auf dieser Seite schließen" aria-label="Auf dieser Seite schließen">' + icoClose + "</button></div>";
     const gripHtml = '<span class="drag-grip" aria-hidden="true" title="' + (gedockt ? "Ziehen, um das Panel aus der rechten Spalte zu lösen" : "Ziehen zum Verschieben") + '">⠿</span>';
-    // Auf Amazon-PDP kompakter 1-Zeilen-Kopf (Bild & Titel stehen direkt links daneben); schwebend voller Produktkopf
-    const kopf = (gedockt && IST_AMAZON
-      ? '<div class="kopf kompakt" id="kopf" title="Ziehen, um das Panel herauszulösen und frei zu platzieren">' + gripHtml + '<span class="axbadge">AX</span>' + codesHtml + aktionenHtml + "</div>"
-      : '<div class="kopf" id="kopf">' +
+    // Immer voller Produktkopf (Bild, Titel, ASIN/EAN, Maße & Gewicht) + obere Zug- & Aktionsleiste
+    const kopf = '<div class="kopf" id="kopf" title="' + (gedockt ? "Ziehen, um das Panel herauszulösen und frei zu platzieren" : "Ziehen zum Verschieben") + '">' +
+      '<div class="kopf-bar">' + gripHtml + '<span class="axbadge">AX</span><span class="axname">ArbitrageX</span>' + aktionenHtml + "</div>" +
+      '<div class="kopf-prod">' +
         (k.bild ? '<img src="' + esc(k.bild) + '" alt="">' : '<div class="noimg">AX</div>') +
         '<div class="ktxt"><b title="' + esc(k.titel || "") + '">' + esc(k.titel || "Arbitragex") + "</b>" +
           codesHtml +
-          (k.masse ? "<span>" + masseText(k.masse) + "</span>" : "") + "</div>" +
-        aktionenHtml + "</div>") +
+          (k.masse ? '<span class="masse-kopf" title="Packmaße &amp; Gewicht">' + masseText(k.masse) + "</span>" : "") + "</div>" +
+      "</div></div>" +
       schnelllinks(k);
     let inhalt;
     if (S.fehler) inhalt = '<div class="msg">' + S.fehler + "</div>";
@@ -614,12 +610,10 @@
     const tarif = S.kanal === "fba" && (m.modell_efn || S.tarif[mk]) ? '<button class="tarif" id="tarif" title="Tarif umschalten (Standard: ' +
       esc({ auto: "nach Lager", paneu: "Pan-EU", efn: "EFN" }[d.eu_versand] || d.eu_versand) + ')">' +
       (S.tarif[mk] ? "EFN" : "Pan-EU") + "</button>" : "";
-    const masseInfo = (istGedockt() && IST_AMAZON && d.katalog && d.katalog.masse)
-      ? '<div class="masse-zeile">Maße: ' + masseText(d.katalog.masse) + "</div>" : "";
     const chartMeta = S.chartQuelle === "keepa"
       ? "Keepa · " + (S.bereich === 365 ? "1 J" : S.bereich + " T")
       : (S.bereich === 365 ? "1 J" : S.bereich + " T") + ((m.verlauf || []).length ? " · " + (m.verlauf || []).length + " Pkt." : "");
-    // Reihenfolge (Betreiber 11.11. & 26.11.2026): kompakt auf PDP – Kern-Rechner oben, Zusatzbereiche sauber ein-/ausklappbar
+    // Reihenfolge (Betreiber): Freigabe/Fakten oben, Rechner + Einkauf registrieren direkt sichtbar, alle Detail-Sektionen offen
     return '<div class="tabs">' + tabs + "</div>" +
       oosHinweis +
       AxxRechner.fakten(d, mk, mk === seitenMarkt() ? badgeSeite() : null, BASE) +
@@ -641,20 +635,20 @@
       "</div>" +
       '<div class="landhinweis" id="landhinweis"></div>' +
       '<div class="erg" id="erg"></div>' +
-      "</div>" +
-      '<div class="secs">' +
-      '<details class="box sec" data-sec="kauf"' + (secOffen("kauf") ? " open" : "") + '><summary><span>Einkauf &amp; Listing</span><span class="sec-meta">' + (S.kaufMeldung ? "✓ Status" : "Buylist / SKU") + '</span></summary><div class="sec-body">' +
+      '<div class="kaufwrap">' +
         '<div class="kaufres" id="kaufres">' + (S.kaufMeldung || "") + "</div>" +
         kaufFelder() +
         '<button class="kauf" id="kauf">Einkauf registrieren</button>' +
-      "</div></details>" +
-      '<details class="box sec" data-sec="geb" id="geb"' + (secOffen("geb") ? " open" : "") + '><summary><span>Gebühren &amp; Rechnung</span><span class="sec-meta" id="geb-sum">—</span></summary><div class="sec-body">' + masseInfo + '<div id="aufst"></div></div></details>' +
+      "</div>" +
+      "</div>" +
+      '<div class="secs">' +
+      '<details class="box sec" data-sec="geb" id="geb"' + (secOffen("geb") ? " open" : "") + '><summary><span>Rechnung &amp; Gebühren</span><span class="sec-meta" id="geb-sum">—</span></summary><div class="sec-body"><div id="aufst"></div></div></details>' +
+      '<details class="box sec" data-sec="chart"' + (secOffen("chart") ? " open" : "") + '><summary><span>Preisverlauf &amp; Chart</span><span class="sec-meta">' + esc(chartMeta) + '</span></summary><div class="sec-body">' + chartBlock(m) + "</div></details>" +
       '<details class="box sec" data-sec="eu"' + (secOffen("eu") ? " open" : "") + '><summary><span>EU-Märkte (DE · FR · IT · ES)</span><span class="sec-meta" id="eu-best">—</span></summary><div class="sec-body">' +
         '<table class="alle"><tr><th></th><th>Buy Box</th><th>Gewinn</th><th>ROI</th></tr>' +
           MPS.map((k) => '<tr data-mk="' + k + '"' + (k === mk ? ' class="an"' : "") + "><td>" + FLAG[k] + " " + k.toUpperCase() + "</td><td>" +
             eur((d.maerkte[k] || {}).buybox) + '</td><td id="g-' + k + '">—</td><td id="r-' + k + '">—</td></tr>').join("") +
         "</table></div></details>" +
-      '<details class="box sec" data-sec="chart"' + (secOffen("chart") ? " open" : "") + '><summary><span>Preisverlauf &amp; Chart</span><span class="sec-meta">' + esc(chartMeta) + '</span></summary><div class="sec-body">' + chartBlock(m) + "</div></details>" +
       sellerBlock(m, mk) +
       "</div>";
   }
@@ -1190,7 +1184,7 @@
         const k = det.getAttribute("data-sec");
         if (!k) return;
         S.offen[k] = det.open;
-        store.set({ axxSecOffen: S.offen });
+        store.set({ axxSecOffen2: S.offen });
       };
     });
     root.querySelectorAll("input").forEach((i) => i.addEventListener("blur", () => {
@@ -1772,11 +1766,11 @@
   }
 
   async function pruefen() {
-    const st = await store.get(["axxModus", "axxPanel", "axxPanelZu", "axxDocked", "axxSecOffen", "axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxChartAus", "axxChartQuelle"]);
+    const st = await store.get(["axxModus", "axxPanel", "axxPanelZu", "axxDocked", "axxSecOffen2", "axxPanelPos", "axxLeistePos", "axxZielRoi", "axxBereich", "axxChartAus", "axxChartQuelle"]);
     if (st.axxBereich) S.bereich = Number(st.axxBereich);
     if (st.axxChartAus && typeof st.axxChartAus === "object") S.chartAus = Object.assign({}, st.axxChartAus);
     if (st.axxChartQuelle === "keepa" || st.axxChartQuelle === "eigen") S.chartQuelle = st.axxChartQuelle;
-    if (st.axxSecOffen && typeof st.axxSecOffen === "object") S.offen = Object.assign({}, st.axxSecOffen);
+    if (st.axxSecOffen2 && typeof st.axxSecOffen2 === "object") S.offen = Object.assign({}, st.axxSecOffen2);
     S.docked = st.axxDocked !== false;
     const an = (st.axxModus || "profit") === "profit" && st.axxPanel !== false;
     S.modus = st.axxModus || "profit";
@@ -1810,10 +1804,10 @@
    * kein neuer Tab: ASIN -> direkt rechnen; EAN/Titel -> Katalogsuche über das eigene Konto,
    * ein Treffer -> rechnen, mehrere -> Auswahl (nie raten). Auf Shop-Seiten ist der Shop die Bezugsquelle. */
   async function menue(m) {
-    const st = await store.get(["axxPanelPos", "axxLeistePos", "axxDocked", "axxSecOffen", "axxZielRoi", "axxBereich", "axxModus", "axxChartAus", "axxChartQuelle"]);
+    const st = await store.get(["axxPanelPos", "axxLeistePos", "axxDocked", "axxSecOffen2", "axxZielRoi", "axxBereich", "axxModus", "axxChartAus", "axxChartQuelle"]);
     S.modus = st.axxModus || "profit";
     S.docked = st.axxDocked !== false;
-    if (st.axxSecOffen && typeof st.axxSecOffen === "object") S.offen = Object.assign({}, st.axxSecOffen);
+    if (st.axxSecOffen2 && typeof st.axxSecOffen2 === "object") S.offen = Object.assign({}, st.axxSecOffen2);
     S.pos = st.axxPanelPos || null; S.posZu = st.axxLeistePos || null;
     if (st.axxZielRoi != null) S.ziel = Number(st.axxZielRoi);
     if (st.axxBereich) S.bereich = Number(st.axxBereich);
@@ -1953,37 +1947,38 @@
   .leiste .grip { cursor: grab; color: #94a3b8; padding: 0 9px; border-left: 1px solid rgba(255,255,255,.10); }
   .leiste .grip:active { cursor: grabbing; }
 
-  /* Kopf: Deep Navy Chrome — visuell klar von Amazon abgesetzt & erkennbar ziehbar */
-  .kopf { display: flex; align-items: flex-start; gap: 9px; padding: 10px 11px 9px; cursor: grab; flex: 0 0 auto;
+  /* Kopf: Deep Navy Chrome — obere Zug- & Aktionsleiste + voller Produktkopf (Bild, Titel, ASIN/EAN, Maße & Gewicht) */
+  .kopf { display: flex; flex-direction: column; cursor: grab; flex: 0 0 auto;
           background: linear-gradient(180deg, var(--chrome2) 0%, var(--chrome) 100%); color: #f8fafc;
           border-bottom: 1px solid rgba(255,255,255,.08); position: relative; z-index: 3; }
   .kopf:active { cursor: grabbing; }
-  .kopf.kompakt { align-items: center; gap: 4px; padding: 6px 7px; min-height: 36px; position: relative; }
-  .kopf.kompakt .kbtn { position: static; margin-left: auto; flex: 0 0 auto; }
-  .kopf.kompakt .kbtn button { width: 21px; height: 21px; }
-  .kopf.kompakt .codes { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-  .kopf.kompakt .cp { font-size: 9.5px; padding: 2px 4.5px; letter-spacing: -.01em; }
-  .kopf.kompakt .cp.ean { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .drag-grip { flex: 0 0 auto; color: #94a3b8; font-size: 12px; line-height: 1; letter-spacing: -1px; padding: 2px 0; opacity: .82; transition: opacity .15s ease, color .15s ease; }
+  .kopf-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+              border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(6,14,26,.22); }
+  .axname { font-size: 11px; font-weight: 700; letter-spacing: .01em; color: #e2e8f0; margin-right: auto; white-space: nowrap; }
+  .kopf-prod { display: flex; align-items: flex-start; gap: 9px; padding: 9px 10px; }
+  .drag-grip { flex: 0 0 auto; color: #cbd5e1; font-size: 13px; line-height: 1; letter-spacing: -1px; padding: 2px 1px; opacity: .9; transition: opacity .15s ease, color .15s ease; }
   .kopf:hover .drag-grip { opacity: 1; color: #e2e8f0; }
-  .axbadge { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px;
+  .axbadge { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px;
              background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #4f46e5 100%);
              box-shadow: 0 2px 6px rgba(79,70,229,.42), inset 0 1px 0 rgba(255,255,255,.28);
-             color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .03em; display: inline-flex; align-items: center; justify-content: center; }
-  .kopf img, .kopf .noimg { width: 46px; height: 46px; object-fit: contain; background: #fff; border: 1px solid rgba(255,255,255,.16); border-radius: 8px;
+             color: #fff; font-size: 9.5px; font-weight: 800; letter-spacing: .03em; display: inline-flex; align-items: center; justify-content: center; }
+  .kopf img, .kopf .noimg { width: 46px; height: 46px; object-fit: contain; background: #fff; border: 1px solid rgba(255,255,255,.18); border-radius: 8px;
           flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; padding: 3px; }
   .kopf .noimg { background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #4f46e5 100%); color: #fff; border: 0; }
   .ktxt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .ktxt b { font-size: 12px; font-weight: 600; line-height: 1.3; color: #ffffff;
-            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding-right: 122px; }
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .ktxt span { font-size: 10.5px; color: #cbd5e1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .codes { display: flex; gap: 3px; flex-wrap: nowrap; align-items: center; }
-  .cp { background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.16); color: #f8fafc; font-size: 10.5px; font-weight: 600;
+  .ktxt .masse-kopf { font-size: 10.5px; color: #cbd5e1; white-space: normal; line-height: 1.3; }
+  .codes { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .cp { background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.16); color: #f8fafc; font-size: 10px; font-weight: 600;
         border-radius: 5px; padding: 2px 6px; cursor: copy; white-space: nowrap; line-height: 1.3; }
   .cp:hover { background: rgba(99,102,241,.36); border-color: rgba(165,180,252,.7); color: #ffffff; }
   .cp.ean { color: #cbd5e1; font-weight: 500; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
   .codes .ohne { font-size: 10px; color: #94a3b8; padding: 1px 2px; cursor: help; }
-  .kbtn { display: flex; gap: 2px; position: absolute; top: 8px; right: 8px; }
+  .kbtn { display: flex; gap: 2px; flex: 0 0 auto; }
+  .kopf.wahl { flex-direction: row; align-items: center; gap: 9px; padding: 10px 11px 9px; }
+  .kopf.wahl .kbtn { margin-left: auto; }
   .kbtn button { background: rgba(255,255,255,.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; width: 22px; height: 22px; padding: 0; cursor: pointer;
                  font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center; }
   .kbtn button:hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.28); color: #ffffff; }
@@ -1999,7 +1994,6 @@
   .inhalt { padding: 8px 10px 10px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
             scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
   .msg { padding: 12px 4px; color: var(--leise); line-height: 1.5; }
-  .kopf.wahl { align-items: center; }
   .kopf.wahl .noimg { padding: 0; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 7px; border: 0;
     background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #4f46e5 100%); color: #fff;
     font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; letter-spacing: .3px; }
@@ -2089,6 +2083,7 @@
   .url input { font-size: 11.5px; font-weight: 400; padding: 5px 8px; }
   .landhinweis { font-size: 11px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 6px 9px; margin-bottom: 7px; line-height: 1.4; }
   .landhinweis:empty { display: none; }
+  .kaufwrap { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--linie); }
   .kaufgrid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 7px; margin-bottom: 8px; }
   .kaufgrid label { display: flex; flex-direction: column; font-size: 10.5px; font-weight: 600; color: var(--leise); gap: 3px; min-width: 0; }
   .kaufgrid .voll { grid-column: 1 / -1; }
@@ -2104,7 +2099,6 @@
   .kok small { display: block; font-weight: 400; margin-top: 2px; color: var(--tinte); }
   .kerr { background: var(--minus-bg); border: 1px solid var(--minus-bd); color: var(--minus); }
   .kauf:disabled { opacity: .6; cursor: default; }
-  .masse-zeile { font-size: 10.5px; color: var(--leise); padding: 0 0 6px; border-bottom: 1px solid var(--linie); margin-bottom: 6px; }
   .einst { margin-top: 7px; }
   .einst .er { display: flex; gap: 7px; align-items: center; margin: 6px 0; font-size: 11.5px; color: var(--tinte); }
   .einst .er.sub { margin-left: 18px; }
