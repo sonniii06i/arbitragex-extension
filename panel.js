@@ -520,6 +520,9 @@
     if (S.fehler) inhalt = '<div class="msg">' + S.fehler + "</div>";
     else if (!S.d) inhalt = '<div class="msg"><span class="spin"></span> Profit wird gerechnet…</div>';
     else inhalt = rumpf();
+    const altInhalt = p.querySelector(".inhalt");
+    const scrollTop = altInhalt ? altInhalt.scrollTop : 0;
+    const winScrollY = window.scrollY;
     p.innerHTML = kopf + '<div class="inhalt">' + inhalt + einstellungen() + "</div>";
     einstellungenVerdrahten(root);
     const db = root.getElementById("dockBtn");
@@ -535,6 +538,9 @@
     kopierbar(root);
     ziehbar(root.getElementById("kopf"), false);
     if (S.d) verdrahten(root);
+    const neuInhalt = p.querySelector(".inhalt");
+    if (neuInhalt && scrollTop) neuInhalt.scrollTop = scrollTop;
+    if (gedockt && Math.abs(window.scrollY - winScrollY) > 2) window.scrollTo(window.scrollX, winScrollY);
   }
 
   function kopierbar(root) {
@@ -1209,15 +1215,38 @@
       AxxRechner.ustGewaehlt(S.d, land, r.data.satz, r.data.quelle);
       zeichne();
     });
-    root.querySelectorAll("[data-bereich]").forEach((b) => b.onclick = (e) => {
-      e.preventDefault(); S.bereich = +b.getAttribute("data-bereich"); store.set({ axxBereich: S.bereich }); zeichne();
-    });
-    root.querySelectorAll("[data-cquelle]").forEach((b) => b.onclick = (e) => {
-      e.preventDefault();
-      const q = b.getAttribute("data-cquelle");
-      if (q !== "eigen" && q !== "keepa") return;
-      S.chartQuelle = q; store.set({ axxChartQuelle: q }); zeichne();
-    });
+    const chartSteuerungVerdrahten = (scope) => {
+      scope.querySelectorAll("[data-bereich]").forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        S.bereich = +b.getAttribute("data-bereich");
+        store.set({ axxBereich: S.bereich });
+        chartLokalNeu();
+      });
+      scope.querySelectorAll("[data-cquelle]").forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        const q = b.getAttribute("data-cquelle");
+        if (q !== "eigen" && q !== "keepa") return;
+        S.chartQuelle = q;
+        store.set({ axxChartQuelle: q });
+        chartLokalNeu();
+      });
+    };
+    const chartLokalNeu = () => {
+      const det = root.querySelector('details[data-sec="chart"]');
+      const body = det && det.querySelector(".sec-body");
+      const m = S.d && S.d.maerkte ? (S.d.maerkte[S.mk] || {}) : null;
+      if (!body || !m) return zeichne();
+      const meta = det.querySelector(".sec-meta");
+      if (meta) {
+        meta.textContent = S.chartQuelle === "keepa"
+          ? "Keepa · " + (S.bereich === 365 ? "1 J" : S.bereich + " T")
+          : (S.bereich === 365 ? "1 J" : S.bereich + " T") + ((m.verlauf || []).length ? " · " + (m.verlauf || []).length + " Pkt." : "");
+      }
+      body.innerHTML = chartBlock(m);
+      chartSteuerungVerdrahten(body);
+      chartHover(root);
+    };
+    chartSteuerungVerdrahten(root);
     chartHover(root);
     const ek = $("ek");
     if (ek) {
@@ -2190,7 +2219,7 @@
   .cbtn, .ckeepa { border: 1px solid var(--rand); background: var(--papier); color: var(--tinte); border-radius: 6px; padding: 2px 7px; font-size: 10px; font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.5; font-family: inherit; }
   .cbtn:hover, .ckeepa:hover { background: var(--akzent-bg); border-color: var(--akzent); color: var(--akzent); }
   .ckeepa-wrap { background: var(--papier); border: 1px solid var(--linie); border-radius: 8px; padding: 4px; overflow: hidden; margin-bottom: 5px; }
-  .ckeepa-img { width: 100%; height: auto; display: block; border-radius: 5px; }
+  .ckeepa-img { width: 100%; height: auto; aspect-ratio: 640 / 280; display: block; border-radius: 5px; background: var(--flaeche); }
   .cstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 5px; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
   .cstats span { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 7px; padding: 5px 7px; }
   .cstats i { display: block; font-style: normal; font-size: 9.5px; color: var(--leise); line-height: 1.2; }
